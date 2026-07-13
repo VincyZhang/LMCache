@@ -19,6 +19,9 @@ TOKEN="${1:?Usage: $0 <BUILDKITE_AGENT_TOKEN> <GITHUB_TOKEN>}"
 GH_TOKEN="${2:?Usage: $0 <BUILDKITE_AGENT_TOKEN> <GITHUB_TOKEN>}"
 QUEUE="${BUILDKITE_QUEUE:-k8s}"
 
+# Ensure the namespace exists before creating namespaced resources.
+kubectl create namespace buildkite --dry-run=client -o yaml | kubectl apply -f -
+
 # Create (or update) the K8s secret with GitHub credentials.
 # Two keys:
 #   .git-credentials — used by agent-stack-k8s checkout container (HTTPS clone).
