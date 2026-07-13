@@ -24,7 +24,7 @@ Single-node K3s + NVIDIA GPU Operator for running LMCache CI on any GPU machine.
 
 If you already have a K3s/GPU host and only need to connect it to LMCache's Buildkite, run step 3 after step 1. The only required Buildkite-side pieces are a queue name and an agent token; the K8s controller pod handles the actual jobs.
 
-`setup-cluster.sh` does everything: installs K3s, Helm, GPU Operator, builds the CI base image from `ci-base.Dockerfile`, imports it into K3s containerd locally, and creates host volume directories. Safe to re-run.
+If your machine already has Kubernetes, set `KUBECONFIG` to that cluster before running the other scripts. The helper scripts will use it automatically.
 
 ## How Buildkite integration works
 
@@ -105,7 +105,7 @@ K8s device plugin handles atomic allocation. No `pick-free-gpu.sh`.
 
 ## CI base image
 
-`ci-base.Dockerfile` builds an image with CUDA + Python 3.12 + uv + build deps (no vLLM/LMCache). `setup-cluster.sh` builds it automatically, auto-detects your GPU's compute capability for `TORCH_CUDA_ARCH_LIST`, and imports it into K3s containerd — no registry needed.
+`ci-base.Dockerfile` builds an image with CUDA + Python 3.12 + uv + build deps (no vLLM/LMCache). `setup-cluster.sh` builds it automatically on a K3s host, auto-detects your GPU's compute capability for `TORCH_CUDA_ARCH_LIST`, and imports it into K3s containerd — no registry needed.
 
 To rebuild after changing `requirements/*.txt`:
 ```bash

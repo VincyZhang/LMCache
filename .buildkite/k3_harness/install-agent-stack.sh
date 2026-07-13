@@ -11,7 +11,9 @@
 # The queue name defaults to "k8s". Override with BUILDKITE_QUEUE env var.
 set -euo pipefail
 
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/common.sh"
 
 TOKEN="${1:?Usage: $0 <BUILDKITE_AGENT_TOKEN> <GITHUB_TOKEN>}"
 GH_TOKEN="${2:?Usage: $0 <BUILDKITE_AGENT_TOKEN> <GITHUB_TOKEN>}"

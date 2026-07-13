@@ -3,7 +3,9 @@
 # Host data volumes (/data/*) are NOT deleted.
 set -euo pipefail
 
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/common.sh"
 
 echo "=== Teardown ==="
 
