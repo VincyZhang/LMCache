@@ -1,0 +1,43 @@
+# XPU smoke test.
+# Runs on a dedicated `xpu` queue with a build step and a separate K8s test pod.
+
+env:
+  LOCAL_REGISTRY: "127.0.0.1:5000"
+
+steps:
+  - label: ":package: Build XPU image"
+    command: .buildkite/k3_tests/xpu/build.sh
+    timeout_in_minutes: 90
+    agents: { queue: "xpu" }
+    plugins:
+      - kubernetes:
+          podSpec:
+            # The build pod must reach the host-local registry.
+            hostNetwork: true
+            dnsPolicy: ClusterFirstWithHostNet
+            containers:
+              - name: container-0
+                image: gcr.io/kaniko-project/executor:v1.23.2-debug
+                imagePullPolicy: IfNotPresent
+
+  - label: ":gpu: XPU smoke test"
+    command: .buildkite/k3_tests/xpu/run.sh
+    timeout_in_minutes: 180
+    agents: { queue: "xpu" }
+    plugins:
+      - kubernetes:
+          podSpec:
+            # The image is resolved by the node runtime from the host-local registry.
+            containers:
+              - name: container-0
+                image: 127.0.0.1:5000/lmcache/xpu-ci:latest
+                imagePullPolicy: Always
+                resources:
+                  requests:
+                    deviceclass.resource.kubernetes.io/gpu.intel.com: "1"
+                  limits:
+                    deviceclass.resource.kubernetes.io/gpu.intel.com: "1"
+                volumeMounts:
+                  - { name: hf-cache, mountPath: /root/.cache/huggingface }
+            volumes:
+              - { name: hf-cache, hostPath: { path: /data/huggingface, type: DirectoryOrCreate } }
