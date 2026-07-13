@@ -5,7 +5,7 @@ set -euo pipefail
 resolve_kubeconfig() {
     if [[ -n "${KUBECONFIG:-}" ]]; then
         IFS=':' read -r first_kubeconfig _ <<<"${KUBECONFIG}"
-        if [[ -f "${first_kubeconfig}" ]]; then
+        if [[ -r "${first_kubeconfig}" ]]; then
             echo "${KUBECONFIG}"
             return 0
         fi
@@ -16,7 +16,7 @@ resolve_kubeconfig() {
         /etc/rancher/k3s/k3s.yaml \
         /etc/kubernetes/admin.conf \
         "${HOME}/.kube/config"; do
-        if [[ -f "${candidate}" ]]; then
+        if [[ -r "${candidate}" ]]; then
             echo "${candidate}"
             return 0
         fi
