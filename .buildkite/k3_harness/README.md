@@ -22,7 +22,9 @@ Single-node K3s + NVIDIA GPU Operator for running LMCache CI on any GPU machine.
 .buildkite/k3_harness/install-agent-stack.sh <BUILDKITE_AGENT_TOKEN> <GITHUB_TOKEN>
 ```
 
-`setup-cluster.sh` does everything: installs K3s, Helm, GPU Operator, builds the CI base image from `ci-base.Dockerfile`, imports it into K3s containerd locally, and creates host volume directories. Safe to re-run.
+If you already have a K3s/GPU host and only need to connect it to LMCache's Buildkite, run step 3 after step 1. The only required Buildkite-side pieces are a queue name and an agent token; the K8s controller pod handles the actual jobs.
+
+If your machine already has Kubernetes, set `KUBECONFIG` to that cluster before running the other scripts. The helper scripts will use it automatically.
 
 ## How Buildkite integration works
 
@@ -41,6 +43,18 @@ To use a queue name other than `k8s`, set `BUILDKITE_QUEUE` when running install
 ```bash
 BUILDKITE_QUEUE=my-queue .buildkite/k3_harness/install-agent-stack.sh <AGENT_TOKEN> <GITHUB_TOKEN>
 ```
+
+## Connecting a host to Buildkite
+
+To attach your host machine to LMCache's Buildkite stack:
+
+1. Make sure the host already has Docker and GPU drivers installed.
+2. Run `setup-cluster.sh` once to create the K3s cluster and base CI image.
+3. Create a Buildkite queue in the Web UI, then copy an agent token from the cluster settings page.
+4. Run `install-agent-stack.sh <BUILDKITE_AGENT_TOKEN> <GITHUB_TOKEN>` on the host.
+5. Confirm the controller pod is running with `kubectl get pods -n buildkite`.
+
+After that, any pipeline step that targets the same queue will be picked up by agent-stack-k8s and run as an ephemeral K8s pod on that host.
 
 Pipeline steps target the queue with:
 ```yaml
@@ -91,7 +105,7 @@ K8s device plugin handles atomic allocation. No `pick-free-gpu.sh`.
 
 ## CI base image
 
-`ci-base.Dockerfile` builds an image with CUDA + Python 3.12 + uv + build deps (no vLLM/LMCache). `setup-cluster.sh` builds it automatically, auto-detects your GPU's compute capability for `TORCH_CUDA_ARCH_LIST`, and imports it into K3s containerd — no registry needed.
+`ci-base.Dockerfile` builds an image with CUDA + Python 3.12 + uv + build deps (no vLLM/LMCache). `setup-cluster.sh` builds it automatically on a K3s host, auto-detects your GPU's compute capability for `TORCH_CUDA_ARCH_LIST`, and imports it into K3s containerd — no registry needed.
 
 To rebuild after changing `requirements/*.txt`:
 ```bash
@@ -104,7 +118,7 @@ REBUILD_IMAGE=1 .buildkite/k3_harness/setup-cluster.sh
 k3_harness/
 ├── ci-base.Dockerfile      # CI base image definition
 ├── setup-cluster.sh        # One-time: K3s + GPU Operator + base image
-├── install-agent-stack.sh  # One-time: Buildkite agent (needs token + GitHub token)
+├── install-agent-stack.sh  # One-time: connect the host to Buildkite via agent-stack-k8s
 ├── values.yaml             # Reference Helm values (documentation only)
 ├── setup-env.sh            # Per-job: install vLLM + LMCache (includes GPU health check)
 ├── smoke-test.sh           # Verify: GPU pod runs in K3s

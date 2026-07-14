@@ -38,6 +38,18 @@ Each directory has a `BK_WEB_SETUP.md` with the exact settings — env vars, Git
 4. Under **GitHub Settings**, configure trigger filters per the test's `BK_WEB_SETUP.md`
 5. Save — jobs will run on the K8s queue automatically
 
+### XPU pipeline notes
+
+The XPU pipeline is a little different from the regular K8s tests:
+
+- it uses the `xpu` queue instead of `k8s`
+- it is label-gated: the GitHub trigger filter only starts the pipeline when
+  the PR has the `xpu` label
+- it has a build step that pushes `lmcache/xpu-ci:latest` to the host-local registry
+- the test step runs in a separate pod and pulls the built image from that registry
+
+See [xpu/BK_WEB_SETUP.md](xpu/BK_WEB_SETUP.md) for the exact Buildkite UI settings and host requirements.
+
 ### Path-based skip (auto-pass on docs-only changes)
 
 The upload step in `buildkite-pipeline.yml` runs `common_scripts/upload-pipeline.sh`
