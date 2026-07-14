@@ -18,7 +18,7 @@ fail() {
 export TEST_SELECTOR="${TEST_SELECTOR:-calculate_cdf or get_gpu_pci_bus_id or load_and_reshape_flash}"
 cd "${REPO_ROOT}"
 
-source "${REPO_ROOT}/.buildkite/k3_harness/setup-env.sh"
+source "${REPO_ROOT}/.buildkite/k3_harness/setup-lmcache-only-env.sh"
 
 if [ -f /opt/intel/oneapi/setvars.sh ]; then
   # Intel XPU runtime environment.
