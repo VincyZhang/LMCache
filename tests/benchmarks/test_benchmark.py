@@ -13,6 +13,7 @@ import pytest
 import torch
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.utils import mock_up_broadcast_fn, mock_up_broadcast_object_fn
 from lmcache.v1.cache_engine import LMCacheEngineBuilder
 from lmcache.v1.config import LMCacheEngineConfig
@@ -105,12 +106,9 @@ def create_config():
 # test store 10GB data (1GB * 10)
 @pytest.mark.no_shared_allocator
 @pytest.mark.benchmark(group="store")
+@pytest.mark.gpu
 @pytest.mark.parametrize("backend", ["cpu", "disk", "fsconnector"])
 @pytest.mark.parametrize("save_unfull_chunk", [False, True])
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemGPUConnectorV2",
-)
 def test_store_1GB(
     benchmark,
     backend,
@@ -146,7 +144,7 @@ def test_store_1GB(
     dtype = torch.bfloat16
 
     # lmcache and vllm configs
-    device = "cuda"
+    device = torch_device_type
     num_tokens = 2000
 
     num_blocks = 1000
@@ -219,12 +217,9 @@ def test_store_1GB(
 # Test retrieve 10data (10 rounds, each round 1GB, 100% hit)
 @pytest.mark.no_shared_allocator
 @pytest.mark.benchmark(group="retrieve")
+@pytest.mark.gpu
 @pytest.mark.parametrize("backend", ["cpu", "disk", "fsconnector"])
 @pytest.mark.parametrize("save_unfull_chunk", [False, True])
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemGPUConnectorV2",
-)
 def test_retrieve_1GB_allhit(
     benchmark,
     backend,
@@ -260,7 +255,7 @@ def test_retrieve_1GB_allhit(
     dtype = torch.bfloat16
 
     # lmcache and vllm configs
-    device = "cuda"
+    device = torch_device_type
     num_tokens = 2000
 
     num_blocks = 1000
@@ -342,12 +337,9 @@ def test_retrieve_1GB_allhit(
 # Test lookup 2K * 10 requests, 100% hit
 @pytest.mark.no_shared_allocator
 @pytest.mark.benchmark(group="lookup")
+@pytest.mark.gpu
 @pytest.mark.parametrize("backend", ["cpu", "disk", "fsconnector"])
 @pytest.mark.parametrize("save_unfull_chunk", [False, True])
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemGPUConnectorV2",
-)
 def test_lookup_20K_tokens(
     benchmark,
     backend,
@@ -379,7 +371,7 @@ def test_lookup_20K_tokens(
     dtype = torch.bfloat16
 
     # lmcache and vllm configs
-    device = "cuda"
+    device = torch_device_type
     num_tokens = 2000
 
     num_blocks = 1000

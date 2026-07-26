@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
+# Third Party
+import pytest
+
 # First Party
 from benchmarks.musa.bench_inprocess_transfer import (
     BenchmarkResult,
     compare_results,
 )
+
+pytestmark = pytest.mark.musa
 
 
 def test_compare_results_requires_native_speedup() -> None:

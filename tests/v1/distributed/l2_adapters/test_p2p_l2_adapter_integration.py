@@ -21,11 +21,7 @@ import pytest
 import torch
 
 nixl = pytest.importorskip("nixl")
-
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="CUDA is not available"
-)
-
+pytestmark = pytest.mark.gpu
 # Third Party
 import zmq  # noqa: E402
 

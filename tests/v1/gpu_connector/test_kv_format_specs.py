@@ -20,6 +20,8 @@ from lmcache.v1.gpu_connector.kv_format import (
 )
 import lmcache.c_ops as lmc_ops
 
+pytestmark = pytest.mark.gpu
+
 # Distinct dims so a wrong axis surfaces as a wrong number.
 NB, NL, BS, NH, HS = 7, 5, 3, 2, 4
 PBS = NB * BS  # 21

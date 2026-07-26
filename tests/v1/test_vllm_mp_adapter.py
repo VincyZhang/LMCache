@@ -17,6 +17,7 @@ import pytest
 import torch
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.integration.vllm import vllm_multi_process_adapter as adapter_mod
 from lmcache.integration.vllm.vllm_multi_process_adapter import (
     HeartbeatThread,
@@ -164,12 +165,36 @@ def fake_adapter(monkeypatch):
 
     # KV-cache wrapping pulls in CUDA IPC; bypass for unit tests.
     monkeypatch.setattr(adapter_mod, "wrap_kv_caches", lambda kv: list(kv.values()))
-    # ``vllm_layout_hints`` returns a ``LayoutHints`` (TypedDict / dict at
-    # runtime); stub it with an empty dict.
-    monkeypatch.setattr(
-        "lmcache.integration.vllm.utils.vllm_layout_hints",
-        lambda: {},
-    )
+    # ``register_kv_caches`` resolves layout hints from adapter_mod namespace.
+    monkeypatch.setattr(adapter_mod, "vllm_layout_hints", lambda: {})
+
+    def _make_transfer_ctx(*_a, **_kw):
+        ctx = MagicMock(name="transfer_ctx")
+
+        def _register(
+            instance_id,
+            kv_caches,
+            model_name,
+            world_size,
+            blocks_in_chunk,
+            mq_client,
+            mq_timeout,
+            send_request,
+            layout_hints,
+            engine_group_infos,
+        ):
+            first_tensor = next(iter(kv_caches.values()))
+            if isinstance(first_tensor, torch.Tensor) and first_tensor.device.type == "cpu":
+                req_type = RequestType.REGISTER_KV_CACHE_ENGINE_DRIVEN_CONTEXT
+            else:
+                req_type = RequestType.REGISTER_KV_CACHE
+            fut = send_request(mq_client, req_type, [kv_caches])
+            fut.result(timeout=mq_timeout)
+
+        ctx.register.side_effect = _register
+        return ctx
+
+    monkeypatch.setattr(adapter_mod, "create_transfer_context", _make_transfer_ctx)
 
     adapter = _make_worker_adapter()
     # __init__ issues exactly one MQ call (the chunk-size query). Reset
@@ -182,7 +207,7 @@ def test_register_kv_caches_updates_kv_caches_and_submits(fake_adapter):
     """Public register_kv_caches stores the dict and submits one request."""
     adapter, send_mock, _ = fake_adapter
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     new_caches = {"layer.0": fake_tensor, "layer.1": fake_tensor}
 
     adapter.register_kv_caches(new_caches)
@@ -200,7 +225,7 @@ def test_register_kv_caches_raises_connection_error_on_timeout(fake_adapter):
 
     with pytest.raises(ConnectionError, match="did not respond"):
         fake_tensor = MagicMock()
-        fake_tensor.device.type = "cuda"
+        fake_tensor.device.type = torch_device_type
         adapter.register_kv_caches({"layer.0": fake_tensor})
 
 
@@ -209,11 +234,7 @@ def test_register_kv_caches_cpu_submits_engine_driven_context_registration(
 ):
     """CPU KV cache registration routes to REGISTER_KV_CACHE_ENGINE_DRIVEN_CONTEXT."""
     adapter, send_mock, _ = fake_adapter
-    monkeypatch.setattr(
-        "lmcache.integration.vllm.utils.vllm_layout_hints",
-        lambda: {},
-        raising=False,
-    )
+    monkeypatch.setattr(adapter_mod, "vllm_layout_hints", lambda: {})
     cpu_kv = {"layer.0": torch.randn(2, 8, 4, 2, 8)}
 
     adapter.register_kv_caches(cpu_kv)
@@ -230,7 +251,7 @@ def test_submit_store_request_tracks_returned_future(fake_adapter, monkeypatch):
     adapter, _send_mock, _ = fake_adapter
     monkeypatch.setattr(adapter, "_ensure_heartbeat_started", lambda: None)
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     adapter.kv_caches = {"layer.0": fake_tensor}
     transfer_ctx = MagicMock()
     fake_future = MagicMock()
@@ -250,7 +271,7 @@ def test_submit_store_request_expands_block_ids_to_views(fake_adapter, monkeypat
     adapter, _send_mock, _ = fake_adapter
     monkeypatch.setattr(adapter, "_ensure_heartbeat_started", lambda: None)
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     adapter.kv_caches = {"layer.0": fake_tensor}
     adapter.engine_group_infos = [
         EngineGroupInfo(0, (0, 2)),
@@ -282,7 +303,7 @@ def test_submit_retrieve_request_tracks_returned_future(fake_adapter, monkeypatc
     adapter, _send_mock, _ = fake_adapter
     monkeypatch.setattr(adapter, "_ensure_heartbeat_started", lambda: None)
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     adapter.kv_caches = {"layer.0": fake_tensor}
     transfer_ctx = MagicMock()
     fake_future = MagicMock()
@@ -606,7 +627,7 @@ def test_recover_callback_skips_register_after_stop_requested(
     contexts = _patch_transfer_context_factory(monkeypatch)
 
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     adapter.register_kv_caches({"layer.0": fake_tensor})
     adapter.submit_store_request("req-1", _op([[0]]), MagicMock())
     heartbeat = FakeHeartbeatThread.instances[0]
@@ -649,7 +670,7 @@ def test_register_uses_local_context_when_self_transfer_ctx_nulled(
     monkeypatch.setattr(adapter_mod, "send_lmcache_request", lambda *a, **kw: future)
     monkeypatch.setattr(adapter_mod, "HeartbeatThread", FakeHeartbeatThread)
     monkeypatch.setattr(adapter_mod, "wrap_kv_caches", lambda kv: list(kv.values()))
-    monkeypatch.setattr("lmcache.integration.vllm.utils.vllm_layout_hints", lambda: {})
+    monkeypatch.setattr(adapter_mod, "vllm_layout_hints", lambda: {})
     local_ctx = MagicMock(name="local_transfer_ctx")
     monkeypatch.setattr(
         adapter_mod, "create_transfer_context", lambda kv, mode: local_ctx
@@ -673,7 +694,7 @@ def test_register_uses_local_context_when_self_transfer_ctx_nulled(
     )
 
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     # Under the bug this raises AttributeError (None.register).
     adapter.register_kv_caches({"layer.0": fake_tensor})
 
@@ -727,7 +748,7 @@ def test_recover_callback_rebuilds_transfer_ctx_without_closing_previous(
     contexts = _patch_transfer_context_factory(monkeypatch)
 
     fake_tensor = MagicMock()
-    fake_tensor.device.type = "cuda"
+    fake_tensor.device.type = torch_device_type
     adapter.register_kv_caches({"layer.0": fake_tensor})  # contexts[0]
     # Start the heartbeat (healthy, no recover) so the callback is wired.
     adapter.submit_store_request("req-1", _op([[0]]), MagicMock())

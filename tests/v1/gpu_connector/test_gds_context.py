@@ -18,7 +18,7 @@ import pytest
 import torch
 
 # First Party
-from lmcache import torch_dev
+from lmcache import torch_dev, torch_device_type
 from lmcache.v1.distributed.api import MemoryLayoutDesc
 from lmcache.v1.distributed.config import GdsL1Config
 from lmcache.v1.distributed.error import L1Error
@@ -46,8 +46,6 @@ def _gds_available() -> bool:
     correctly via its host-bounce fallback, so library loadability is a
     sufficient gate for the correctness checks below.
     """
-    if not torch.cuda.is_available():
-        return False
     if torch.version.hip is not None:
         # Standard
         import ctypes
@@ -59,7 +57,7 @@ def _gds_available() -> bool:
         return True
     return os.path.exists("/proc/driver/nvidia-fs/stats")
 
-
+pytestmark = pytest.mark.gpu
 requires_gds = pytest.mark.skipif(
     not _gds_available(),
     reason="needs CUDA + nvidia-fs or ROCm + libhipfile.so (real GPUDirect Storage)",
@@ -204,8 +202,8 @@ def test_gds_two_stream_write_read(tmp_path):
 
     def register_and_write(stream, pattern):
         """Register a buffer on ``stream`` and write ``pattern`` to a chunk."""
-        with torch.cuda.stream(stream):
-            buf = torch.empty(chunk_bytes, dtype=torch.uint8, device="cuda")
+        with getattr(torch, torch_device_type).stream(stream):
+            buf = torch.empty(chunk_bytes, dtype=torch.uint8, device=torch_device_type)
             ctx.register_gpu_buffer(buf)
             err, objs = mgr.allocate(
                 MemoryLayoutDesc(
@@ -215,13 +213,13 @@ def test_gds_two_stream_write_read(tmp_path):
             )
             assert err == L1Error.SUCCESS
             buf.fill_(pattern)
-            torch.cuda.synchronize()
+            getattr(torch, torch_device_type).synchronize()
             ctx.transfer_async(objs[0], buf, SlabDirection.WRITE)
-            torch.cuda.synchronize()
+            getattr(torch, torch_device_type).synchronize()
         return buf, objs[0]
 
-    stream_a = torch.cuda.Stream()
-    stream_b = torch.cuda.Stream()
+    stream_a = getattr(torch, torch_device_type).Stream()
+    stream_b = getattr(torch, torch_device_type).Stream()
     try:
         buf_a, mem_a = register_and_write(stream_a, 0xA1)
         buf_b, mem_b = register_and_write(stream_b, 0xB2)
@@ -232,17 +230,17 @@ def test_gds_two_stream_write_read(tmp_path):
             (stream_a, buf_a, mem_a, 0xA1),
             (stream_b, buf_b, mem_b, 0xB2),
         ):
-            with torch.cuda.stream(stream):
+            with getattr(torch, torch_device_type).stream(stream):
                 buf.zero_()
-                torch.cuda.synchronize()
+                getattr(torch, torch_device_type).synchronize()
                 ctx.transfer_async(mem, buf, SlabDirection.READ)
-                torch.cuda.synchronize()
+                getattr(torch, torch_device_type).synchronize()
                 expected = torch.full((chunk_bytes,), pattern, dtype=torch.uint8)
                 assert torch.equal(buf.cpu(), expected)
 
         # Deregister each buffer on its own stream.
         for stream, buf in ((stream_a, buf_a), (stream_b, buf_b)):
-            with torch.cuda.stream(stream):
+            with getattr(torch, torch_device_type).stream(stream):
                 ctx.deregister_gpu_buffer(buf)
     finally:
         ctx.close()
@@ -256,7 +254,7 @@ def test_gds_write_read_roundtrip(tmp_path):
     ctx.initialize(cfg)
     try:
         chunk_bytes = 8 << 20
-        buf = torch.empty(chunk_bytes, dtype=torch.uint8, device="cuda")
+        buf = torch.empty(chunk_bytes, dtype=torch.uint8, device=torch_device_type)
         ctx.register_gpu_buffer(buf)
 
         mgr = GDSL1MemoryManager(cfg)
@@ -268,13 +266,13 @@ def test_gds_write_read_roundtrip(tmp_path):
         mem_obj = objs[0]
 
         buf.fill_(0xAB)
-        torch.cuda.synchronize()
+        getattr(torch, torch_device_type).synchronize()
         ctx.transfer_async(mem_obj, buf, SlabDirection.WRITE)
 
         buf.zero_()
-        torch.cuda.synchronize()
+        getattr(torch, torch_device_type).synchronize()
         ctx.transfer_async(mem_obj, buf, SlabDirection.READ)
-        torch.cuda.synchronize()
+        getattr(torch, torch_device_type).synchronize()
 
         expected = torch.full((chunk_bytes,), 0xAB, dtype=torch.uint8)
         assert torch.equal(buf.cpu(), expected)
@@ -294,7 +292,7 @@ def test_gds_chunk_larger_than_region_roundtrip(tmp_path):
     ctx.initialize(cfg)
     try:
         chunk_bytes = 24 << 20  # > 16 MiB -> two registered regions / two DMAs
-        buf = torch.empty(chunk_bytes, dtype=torch.uint8, device="cuda")
+        buf = torch.empty(chunk_bytes, dtype=torch.uint8, device=torch_device_type)
         ctx.register_gpu_buffer(buf)
 
         mgr = GDSL1MemoryManager(cfg)
@@ -310,13 +308,13 @@ def test_gds_chunk_larger_than_region_roundtrip(tmp_path):
         # around the 16 MiB boundary, which a uniform fill would not catch.
         pattern = (torch.arange(chunk_bytes, dtype=torch.int64) % 251).to(torch.uint8)
         buf.copy_(pattern.cuda())
-        torch.cuda.synchronize()
+        getattr(torch, torch_device_type).synchronize()
         ctx.transfer_async(mem_obj, buf, SlabDirection.WRITE)
 
         buf.zero_()
-        torch.cuda.synchronize()
+        getattr(torch, torch_device_type).synchronize()
         ctx.transfer_async(mem_obj, buf, SlabDirection.READ)
-        torch.cuda.synchronize()
+        getattr(torch, torch_device_type).synchronize()
 
         assert torch.equal(buf.cpu(), pattern)
     finally:

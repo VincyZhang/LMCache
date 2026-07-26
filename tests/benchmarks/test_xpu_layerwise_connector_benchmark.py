@@ -24,10 +24,7 @@ from tests.v1.utils import (
 
 BACKENDS = ["cpu", "disk"]
 
-pytestmark = pytest.mark.skipif(
-    torch_device_type != "xpu",
-    reason="XPU-only tests",
-)
+pytestmark = pytest.mark.xpu
 
 # Optional override for tempfile root; see tests/v1/test_cache_engine.py
 # for rationale.

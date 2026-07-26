@@ -12,6 +12,7 @@ import torch
 pytest.importorskip("vllm", reason="EC connector adapter imports vLLM at module top")
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.integration.vllm.vllm_ec_adapter import (  # noqa: E402
     LMCacheECConnectorImpl,
     LMCacheECConnectorMetadata,

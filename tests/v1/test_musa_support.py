@@ -25,7 +25,10 @@ import importlib
 import pytest
 import torch
 
+pytestmark = pytest.mark.musa
+
 # First Party
+from lmcache import torch_device_type
 from lmcache.utils import EngineType
 from lmcache.v1.config import LMCacheEngineConfig
 from lmcache.v1.gpu_connector import CreateGPUConnector
@@ -210,7 +213,7 @@ def test_create_gpu_connector_layerwise_rejected_on_hpu(
     Previously, ``use_layerwise=True`` on HPU silently fell through into
     ``VLLMPagedMemLayerwiseGPUConnector`` — the CUDA layerwise connector —
     which then crashed on HPU tensors when constructing
-    ``torch.cuda.Stream()``. The guard must reject this combination with a
+    a device-specific stream object. The guard must reject this combination with a
     clear error before any device-specific construction.
     """
     _patch_device(monkeypatch, "hpu")

@@ -23,10 +23,7 @@ from lmcache.v1.metadata import LMCacheMetadata
 # backends without a CacheGen kernel are skipped automatically.
 # torch_device_type is set to "cuda"/"xpu" only after is_available() passes
 # in lmcache.__init__, so no extra availability check is needed here.
-pytestmark = pytest.mark.skipif(
-    torch_device_type not in ("cuda", "xpu"),
-    reason="CacheGen kernels only exist for CUDA and XPU",
-)
+pytestmark = [pytest.mark.gpu, pytest.mark.xpu]
 
 
 def _generate_kv(num_tokens, device):

@@ -43,12 +43,7 @@ from lmcache.v1.memory_management import MemoryObjMetadata, TensorMemoryObj
 # Importing this sets the process-wide MeterProvider with an
 # InMemoryMetricReader; controllers bind their instruments to it.
 from tests.v1.mp_observability.subscribers.metrics.otel_setup import reader as _reader
-
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="CUDA is not available"
-)
-
-
+pytestmark = pytest.mark.gpu
 # =============================================================================
 # Helpers
 # =============================================================================

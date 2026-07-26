@@ -27,12 +27,7 @@ from lmcache.v1.distributed.l2_adapters.mock_l2_adapter import (
     MockL2AdapterConfig,
 )
 from lmcache.v1.distributed.storage_manager import StorageManager
-
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="CUDA is not available"
-)
-
-
+pytestmark = pytest.mark.gpu
 # =============================================================================
 # Helpers
 # =============================================================================

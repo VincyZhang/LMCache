@@ -35,6 +35,10 @@ pytestmark = pytest.mark.skipif(
     torch_device_type != "cpu",
     reason="vLLM blocks-first fused format (Format 10) is strictly CPU-only.",
 )
+pytestmark = [
+    pytestmark,
+    pytest.mark.gpu,
+]
 
 NB, NH, BS, HS, NL = 16, 4, 128, 64, 3
 HINTS = {"kv_layout": "HND"}

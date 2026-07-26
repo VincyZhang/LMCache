@@ -28,11 +28,7 @@ from lmcache.v1.mp_observability.config import DEFAULT_OBSERVABILITY_CONFIG
 from lmcache.v1.multiprocess.config import MPServerConfig
 from lmcache.v1.multiprocess.server import run_cache_server
 
-if not torch.cuda.is_available():
-    pytest.skip(
-        "MP cache server requires an accelerator device",
-        allow_module_level=True,
-    )
+pytestmark = pytest.mark.gpu
 
 SERVER_PORT = 15599
 STARTUP_TIMEOUT_SECONDS = 90.0

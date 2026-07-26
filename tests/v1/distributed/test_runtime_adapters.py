@@ -17,6 +17,7 @@ import pytest
 import torch
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.v1.distributed.api import MemoryLayoutDesc, ObjectKey
 from lmcache.v1.distributed.config import (
     EvictionConfig,
@@ -38,11 +39,7 @@ from lmcache.v1.distributed.storage_controllers.store_policy import (
 from lmcache.v1.distributed.storage_manager import StorageManager
 
 # Skip all tests in this module if CUDA is not available
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="CUDA is not available"
-)
-
-
+pytestmark = pytest.mark.gpu
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -64,7 +61,7 @@ def make_layout() -> MemoryLayoutDesc:
 
 
 def should_use_lazy_alloc() -> bool:
-    return torch.cuda.is_available()
+    return (hasattr(torch, torch_device_type) and getattr(torch, torch_device_type).is_available())
 
 
 def wait_for_condition(predicate, timeout: float = 5.0, poll: float = 0.02) -> bool:

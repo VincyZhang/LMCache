@@ -16,10 +16,7 @@ import torch
 from lmcache import torch_device_type
 from lmcache.v1.platform import torch_ops as F
 
-pytestmark = pytest.mark.skipif(
-    torch_device_type != "xpu",
-    reason="Intel XPU not available",
-)
+pytestmark = pytest.mark.xpu
 
 
 @pytest.fixture(scope="module")

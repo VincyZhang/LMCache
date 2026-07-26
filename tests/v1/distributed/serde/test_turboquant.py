@@ -15,6 +15,7 @@ import pytest
 import torch
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.native_storage_ops import Bitmap
 from lmcache.v1.distributed.api import (
     MemoryLayoutDesc,
@@ -276,7 +277,7 @@ def _make_turboquant_storage_manager(preset: str) -> StorageManager:
         l1_manager_config=L1ManagerConfig(
             memory_config=L1MemoryManagerConfig(
                 size_in_bytes=256 * 1024 * 1024,
-                use_lazy=torch.cuda.is_available(),
+                use_lazy=(hasattr(torch, torch_device_type) and getattr(torch, torch_device_type).is_available()),
                 init_size_in_bytes=64 * 1024 * 1024,
             ),
         ),
@@ -286,7 +287,7 @@ def _make_turboquant_storage_manager(preset: str) -> StorageManager:
     return StorageManager(cfg)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.gpu
 @pytest.mark.parametrize(
     ("preset", "corr_lower_bound"),
     [
@@ -404,7 +405,7 @@ class _FakeMemoryObj:
         self.tensor = tensor
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.gpu
 @pytest.mark.parametrize(
     ("preset", "expected_ratio_lower_bound", "corr_lower_bound"),
     [
@@ -423,7 +424,7 @@ def test_turboquant_direct_roundtrip_cuda(
     # First Party
     from lmcache.v1.distributed.serde.turboquant import TurboQuantDeserializer
 
-    device = torch.device("cuda:0")
+    device = torch.device(torch_device_type)
     dtype = torch.float16
 
     # LMCache KV layout: [2, num_layers, num_tokens, hidden_dim]
@@ -511,7 +512,7 @@ def _make_turboquant_fs_storage_manager(
         l1_manager_config=L1ManagerConfig(
             memory_config=L1MemoryManagerConfig(
                 size_in_bytes=256 * 1024 * 1024,
-                use_lazy=torch.cuda.is_available(),
+                use_lazy=(hasattr(torch, torch_device_type) and getattr(torch, torch_device_type).is_available()),
                 init_size_in_bytes=64 * 1024 * 1024,
             ),
         ),
@@ -521,7 +522,7 @@ def _make_turboquant_fs_storage_manager(
     return StorageManager(cfg)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.gpu
 @pytest.mark.parametrize(
     ("preset", "corr_lower_bound"),
     [
