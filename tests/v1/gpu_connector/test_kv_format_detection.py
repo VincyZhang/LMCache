@@ -17,6 +17,8 @@ from lmcache.utils import EngineType
 from lmcache.v1.gpu_connector.kv_format import detect_format, extract_kv_cache_shapes
 import lmcache.c_ops as lmc_ops
 
+pytestmark = pytest.mark.gpu
+
 NB, NL, BS, NH, HS = 7, 5, 3, 2, 4
 DT = torch.float16
 F = lmc_ops.EngineKVFormat

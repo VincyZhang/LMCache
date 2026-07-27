@@ -9,8 +9,13 @@ every format (exactly one is true), so a new format or an edit cannot silently
 break the contract the per-layer detection relies on.
 """
 
+# Third Party
+import pytest
+
 # First Party
 import lmcache.c_ops as lmc_ops
+
+pytestmark = pytest.mark.gpu
 
 F = lmc_ops.EngineKVFormat
 

@@ -10,6 +10,7 @@ import pytest
 import torch
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.v1.gpu_connector.gpu_connectors import (
     SGLangGPUConnector,
     VLLMBufferLayerwiseGPUConnector,
@@ -27,13 +28,10 @@ from lmcache.v1.memory_allocators.tensor_memory_allocator import TensorMemoryAll
 from lmcache.v1.memory_management import MemoryFormat
 from lmcache.v1.metadata import LMCacheMetadata
 
-if torch.cuda.is_available():
-    try:
-        # First Party
-        import lmcache.c_ops as lmc_ops
-    except ImportError:
-        lmc_ops = None
-else:
+try:
+    # First Party
+    import lmcache.c_ops as lmc_ops
+except ImportError:
     lmc_ops = None
 
 # Mock c_ops when not available
@@ -59,6 +57,8 @@ from .utils import (
     generate_sglang_kv_cache_paged_list_tensors,
     recover_gpu_connector_states,
 )
+
+pytestmark = pytest.mark.gpu
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -98,7 +98,7 @@ def patch_pin_allocator():
 
     def fake_pin_close(self):
         if not self._unregistered:
-            torch.cuda.synchronize()
+            getattr(torch, torch_device_type).synchronize()
             # torch.cuda.cudart().cudaHostUnregister(self.buffer.data_ptr())
             self._unregistered = True
 
@@ -124,10 +124,7 @@ def patch_pin_allocator():
         lmc_ops.EngineKVFormat.NL_X_NB_BS_HS,
     ],  # vllm MLA
 )
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemGPUConnectorV2",
-)
+@pytest.mark.gpu
 def test_vllm_paged_connector_v2_with_gpu_and_mla(use_gpu, engine_kv_format):
     use_mla = engine_kv_format == lmc_ops.EngineKVFormat.NL_X_NB_BS_HS
     num_blocks = 100
@@ -135,7 +132,7 @@ def test_vllm_paged_connector_v2_with_gpu_and_mla(use_gpu, engine_kv_format):
     num_layers = 32
     num_heads = 1 if use_mla else 8
     head_size = 128
-    device = "cuda"
+    device = torch_device_type
     hidden_dim = num_heads * head_size
 
     num_tokens = 800
@@ -245,10 +242,7 @@ def test_vllm_paged_connector_v2_with_gpu_and_mla(use_gpu, engine_kv_format):
         lmc_ops.EngineKVFormat.NL_X_NB_BS_HS,
     ],  # vllm MLA
 )
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemGPUConnectorV3",
-)
+@pytest.mark.gpu
 def test_vllm_paged_connector_v3_with_gpu_and_mla(
     use_gpu, num_groups, engine_kv_format
 ):
@@ -258,7 +252,7 @@ def test_vllm_paged_connector_v3_with_gpu_and_mla(
     num_blocks = 100
     block_size = 16
     num_heads = 1 if use_mla else 8
-    device = "cuda"
+    device = torch_device_type
     num_tokens = 800
     chunk_size = 256
 
@@ -382,17 +376,14 @@ def test_vllm_paged_connector_v3_with_gpu_and_mla(
         lmc_ops.EngineKVFormat.NL_X_NB_TWO_BS_NH_HS,  # vllm non-MLA flash infer
     ],
 )
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemLayerwiseGPUConnector",
-)
+@pytest.mark.gpu
 def test_layerwise_vllm_paged_connector_with_gpu(use_gpu, engine_kv_format):
     num_blocks = 100
     block_size = 16
     num_layers = 32
     num_heads = 8
     head_size = 128
-    device = "cuda"
+    device = torch_device_type
     hidden_dim = num_heads * head_size
 
     num_tokens = 800
@@ -496,17 +487,14 @@ def test_layerwise_vllm_paged_connector_with_gpu(use_gpu, engine_kv_format):
 
 
 @pytest.mark.parametrize("use_gpu", [True])
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemLayerwiseGPUConnector",
-)
+@pytest.mark.gpu
 def test_batched_layerwise_vllm_paged_connector_with_gpu(use_gpu):
     num_blocks = 100
     block_size = 16
     num_layers = 32
     num_heads = 8
     head_size = 128
-    device = "cuda"
+    device = torch_device_type
     hidden_dim = num_heads * head_size
 
     num_tokens_1 = 800
@@ -663,17 +651,14 @@ def test_batched_layerwise_vllm_paged_connector_with_gpu(use_gpu):
 
 @pytest.mark.skip(reason="This test is skipped due to vllm dependency")
 @pytest.mark.parametrize("use_gpu", [True])
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMBufferLayerwiseGPUConnector",
-)
+@pytest.mark.gpu
 def test_layerwise_vllm_buffer_connector_with_gpu(use_gpu):
     num_blocks = 100
     block_size = 16
     num_layers = 32
     num_heads = 8
     head_size = 128
-    device = "cuda"
+    device = torch_device_type
     hidden_dim = num_heads * head_size
 
     num_tokens = 800
@@ -763,10 +748,7 @@ def test_layerwise_vllm_buffer_connector_with_gpu(use_gpu):
     allocator.close()
 
 
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to VLLMPagedMemGPUConnectorV2",
-)
+@pytest.mark.gpu
 def test_vllm_paged_connector_v2_to_gpu_bench(benchmark):
     """
     VLLMPagedMemGPUConnectorV2.to_gpu() micro-benchmark.
@@ -781,7 +763,7 @@ def test_vllm_paged_connector_v2_to_gpu_bench(benchmark):
     num_layers = 32
     num_heads = 8
     head_size = 128
-    device = "cuda"
+    device = torch_device_type
     hidden_dim = num_heads * head_size
 
     chunk_size = 256
@@ -827,17 +809,14 @@ def test_vllm_paged_connector_v2_to_gpu_bench(benchmark):
 
 @pytest.mark.parametrize("use_gpu", [True, False])
 @pytest.mark.parametrize("use_mla", [True, False])
-@pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="TODO: Add non-CUDA implementation to SGLangGPUConnector",
-)
+@pytest.mark.gpu
 def test_sglang_connector_with_gpu_and_mla(use_gpu, use_mla):
     num_blocks = 100
     block_size = 16
     num_layers = 32
     num_heads = 1 if use_mla else 8
     head_size = 128
-    device = "cuda"
+    device = torch_device_type
     dtype = torch.bfloat16
     hidden_dim = num_heads * head_size
 

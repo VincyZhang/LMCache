@@ -6,11 +6,16 @@ pure-Python fallback, which provides both ``PageBufferShapeDesc`` and
 ``EngineKVFormat``.
 """
 
+# Third Party
+import pytest
+
 # First Party
 from lmcache.v1.gpu_connector.utils import (
     get_concrete_engine_kv_shape_from_shape_desc,
 )
 import lmcache.c_ops as lmc_ops
+
+pytestmark = pytest.mark.gpu
 
 
 def _make_shape_desc(

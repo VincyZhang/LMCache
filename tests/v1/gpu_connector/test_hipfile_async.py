@@ -20,6 +20,8 @@ import pytest
 # First Party
 from lmcache.v1.gpu_connector import _hipfile_async as ha
 
+pytestmark = pytest.mark.gpu
+
 
 def _ok() -> ha._HipFileError:
     """A success ``hipFileError_t`` (err == hipFileSuccess)."""

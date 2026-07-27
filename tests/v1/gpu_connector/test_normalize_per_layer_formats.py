@@ -8,12 +8,17 @@ The K/V-split path is the SGLang regression: it must not be sliced per layer.
 """
 
 # Third Party
+import pytest
+
+# Third Party
 import torch
 
 # First Party
 from lmcache.utils import EngineType
 from lmcache.v1.gpu_connector.utils import normalize_and_discover_per_layer_formats
 import lmcache.c_ops as lmc_ops
+
+pytestmark = pytest.mark.gpu
 
 NB, NL, BS, NH, HS = 7, 5, 3, 2, 4
 DT = torch.float16
