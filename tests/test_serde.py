@@ -11,6 +11,17 @@ from lmcache.storage_backend.serde.cachegen_encoder import CacheGenSerializer
 from lmcache.v1.config import LMCacheEngineConfig
 from lmcache.v1.metadata import LMCacheMetadata
 
+TORCH_DEVICE_AVAILABLE = (
+    hasattr(torch, torch_device_type)
+    and getattr(torch, torch_device_type).is_available()
+)
+
+if not TORCH_DEVICE_AVAILABLE:
+    pytest.skip(
+        f"Requires available {torch_device_type} runtime",
+        allow_module_level=True,
+    )
+
 # CacheGen tests apply to accelerator backends (CUDA/XPU).
 pytestmark = [pytest.mark.gpu, pytest.mark.xpu]
 

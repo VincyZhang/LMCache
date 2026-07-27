@@ -355,10 +355,6 @@ class TestDynamicCpuMode:
 
 @pytest.mark.gpu
 class TestDynamicGpuMode:
-    @pytest.mark.skipif(
-        torch_device_type != "cuda",
-        reason="Dynamic GPU shared-pool path currently validated only for CUDA",
-    )
     def test_get_allocator_backend_returns_self(self, monkeypatch):
         """In GPU mode, get_allocator_backend() returns self."""
         metadata = _make_metadata()

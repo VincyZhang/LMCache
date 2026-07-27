@@ -14,6 +14,7 @@ import pytest
 import torch
 
 # First Party
+from lmcache import torch_device_type
 from lmcache.v1.distributed.api import (
     MemoryLayoutDesc,
     ObjectKey,
@@ -43,6 +44,18 @@ from lmcache.v1.memory_management import MemoryObjMetadata, TensorMemoryObj
 # Importing this sets the process-wide MeterProvider with an
 # InMemoryMetricReader; controllers bind their instruments to it.
 from tests.v1.mp_observability.subscribers.metrics.otel_setup import reader as _reader
+
+TORCH_DEVICE_AVAILABLE = (
+    hasattr(torch, torch_device_type)
+    and getattr(torch, torch_device_type).is_available()
+)
+
+if not TORCH_DEVICE_AVAILABLE:
+    pytest.skip(
+        f"Requires available {torch_device_type} runtime",
+        allow_module_level=True,
+    )
+
 pytestmark = pytest.mark.gpu
 # =============================================================================
 # Helpers

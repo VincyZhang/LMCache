@@ -18,7 +18,6 @@ import pytest
 import torch
 
 # First Party
-from lmcache import torch_device_type
 from lmcache.v1.distributed.api import MemoryLayoutDesc, ObjectKey
 from lmcache.v1.distributed.config import (
     EvictionConfig,

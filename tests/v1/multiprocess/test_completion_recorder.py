@@ -11,7 +11,6 @@ import msgspec
 import pytest
 
 # First Party
-from lmcache import torch_device_type
 from lmcache.v1.multiprocess.native_completion import (
     DeviceHostFuncDispatcher,
     submit_callback_to_stream,

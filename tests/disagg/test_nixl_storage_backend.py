@@ -31,6 +31,11 @@ from lmcache.v1.storage_backend.nixl_storage_backend import (
 )
 from lmcache.v1.transfer_channel.transfer_utils import get_correct_device
 
+TORCH_DEVICE_AVAILABLE = (
+    hasattr(torch, torch_device_type)
+    and getattr(torch, torch_device_type).is_available()
+)
+
 logger = init_logger(__name__)
 
 
@@ -103,7 +108,6 @@ def create_test_metadata() -> LMCacheMetadata:
 
 
 @pytest.mark.no_shared_allocator
-@pytest.mark.gpu
 def test_nixl_storage_config():
     """Test NixlStorageConfig creation and validation"""
     config = create_test_config()
@@ -255,6 +259,10 @@ def test_endpoint_list_malformed_url_raises():
 
 @pytest.mark.no_shared_allocator
 @pytest.mark.gpu
+@pytest.mark.skipif(
+    not TORCH_DEVICE_AVAILABLE,
+    reason="Requires available {torch_device_type} runtime",
+)
 def test_nixl_storage_backend_basic():
     """Test basic NixlStorageBackend operations"""
     config = create_test_config()
@@ -309,6 +317,10 @@ def test_nixl_storage_backend_basic():
 
 @pytest.mark.no_shared_allocator
 @pytest.mark.gpu
+@pytest.mark.skipif(
+    not TORCH_DEVICE_AVAILABLE,
+    reason="Requires available {torch_device_type} runtime",
+)
 def test_nixl_storage_backend_put_get():
     """Test put and get operations in NixlStorageBackend"""
     config = create_test_config()
@@ -378,6 +390,10 @@ def test_nixl_storage_backend_put_get():
 
 @pytest.mark.no_shared_allocator
 @pytest.mark.gpu
+@pytest.mark.skipif(
+    not TORCH_DEVICE_AVAILABLE,
+    reason="Requires available {torch_device_type} runtime",
+)
 def test_nixl_storage_backend_different_backends():
     """Test NixlStorageBackend with different backend types"""
     backends = (

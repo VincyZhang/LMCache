@@ -41,6 +41,17 @@ from lmcache.v1.distributed.l2_adapters.mock_l2_adapter import MockL2AdapterConf
 from lmcache.v1.distributed.serde import SerdeConfig
 from lmcache.v1.distributed.storage_manager import StorageManager
 
+TORCH_DEVICE_AVAILABLE = (
+    hasattr(torch, torch_device_type)
+    and getattr(torch, torch_device_type).is_available()
+)
+
+if not TORCH_DEVICE_AVAILABLE:
+    pytest.skip(
+        f"Requires available {torch_device_type} runtime",
+        allow_module_level=True,
+    )
+
 # Skip all tests in this module if CUDA is not available
 pytestmark = pytest.mark.gpu
 # =============================================================================

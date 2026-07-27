@@ -18,14 +18,12 @@ import torch
 from lmcache import torch_device_type
 from lmcache.utils import CacheEngineKey, LayerCacheEngineKey
 from lmcache.v1.config import LMCacheEngineConfig
-from lmcache.v1.memory_management import MemoryFormat, MemoryObj
+from lmcache.v1.memory_management import MemoryFormat
 from lmcache.v1.metadata import LMCacheMetadata
 from lmcache.v1.storage_backend.gds_backend import (
     _DATA_FILE_SUFFIX,
     _METADATA_FILE_SUFFIX,
-    _METADATA_VERSION,
     GdsBackend,
-    UnsupportedMetadataVersion,
     get_extra_config_bool,
     pack_metadata,
     unpack_metadata,

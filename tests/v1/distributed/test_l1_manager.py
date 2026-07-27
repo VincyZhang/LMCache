@@ -66,6 +66,17 @@ except ImportError:
         "Skipping because L1 manager cannot be imported", allow_module_level=True
     )
 
+TORCH_DEVICE_AVAILABLE = (
+    hasattr(torch, torch_device_type)
+    and getattr(torch, torch_device_type).is_available()
+)
+
+if not TORCH_DEVICE_AVAILABLE:
+    pytest.skip(
+        f"Requires available {torch_device_type} runtime",
+        allow_module_level=True,
+    )
+
 # Skip all tests in this module if CUDA is not available
 pytestmark = pytest.mark.gpu
 def should_use_lazy_alloc() -> bool:

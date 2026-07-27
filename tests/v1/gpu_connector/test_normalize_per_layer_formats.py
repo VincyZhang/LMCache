@@ -14,7 +14,6 @@ import pytest
 import torch
 
 # First Party
-from lmcache import torch_device_type
 from lmcache.utils import EngineType
 from lmcache.v1.gpu_connector.utils import normalize_and_discover_per_layer_formats
 import lmcache.c_ops as lmc_ops

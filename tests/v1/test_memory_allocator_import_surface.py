@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
-from lmcache import torch_device_type
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 

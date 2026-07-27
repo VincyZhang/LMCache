@@ -15,7 +15,6 @@ import time
 
 # Third Party
 import pytest
-import torch
 
 # First Party
 from lmcache.v1.distributed.config import (

@@ -43,6 +43,11 @@ from lmcache.v1.distributed.serde.turboquant import (
 from lmcache.v1.distributed.storage_manager import StorageManager
 from lmcache.v1.memory_management import MemoryObj
 
+TORCH_DEVICE_AVAILABLE = (
+    hasattr(torch, torch_device_type)
+    and getattr(torch, torch_device_type).is_available()
+)
+
 
 def test_turboquant_registered() -> None:
     assert "turboquant" in get_registered_serde_types()
@@ -288,6 +293,10 @@ def _make_turboquant_storage_manager(preset: str) -> StorageManager:
 
 
 @pytest.mark.gpu
+@pytest.mark.skipif(
+    not TORCH_DEVICE_AVAILABLE,
+    reason="Requires torch_device_type",
+)
 @pytest.mark.parametrize(
     ("preset", "corr_lower_bound"),
     [
@@ -406,6 +415,10 @@ class _FakeMemoryObj:
 
 
 @pytest.mark.gpu
+@pytest.mark.skipif(
+    not TORCH_DEVICE_AVAILABLE,
+    reason="Requires torch_device_type",
+)
 @pytest.mark.parametrize(
     ("preset", "expected_ratio_lower_bound", "corr_lower_bound"),
     [
@@ -424,7 +437,7 @@ def test_turboquant_direct_roundtrip_cuda(
     # First Party
     from lmcache.v1.distributed.serde.turboquant import TurboQuantDeserializer
 
-    device = torch.device(torch_device_type)
+    device = torch.device(f"{torch_device_type}:0")
     dtype = torch.float16
 
     # LMCache KV layout: [2, num_layers, num_tokens, hidden_dim]
@@ -523,6 +536,10 @@ def _make_turboquant_fs_storage_manager(
 
 
 @pytest.mark.gpu
+@pytest.mark.skipif(
+    not TORCH_DEVICE_AVAILABLE,
+    reason="Requires torch_device_type",
+)
 @pytest.mark.parametrize(
     ("preset", "corr_lower_bound"),
     [

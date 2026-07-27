@@ -46,6 +46,8 @@ def _gds_available() -> bool:
     correctly via its host-bounce fallback, so library loadability is a
     sufficient gate for the correctness checks below.
     """
+    if not torch.cuda.is_available():
+        return False
     if torch.version.hip is not None:
         # Standard
         import ctypes
@@ -201,7 +203,7 @@ def test_gds_two_stream_write_read(tmp_path):
     mgr = GDSL1MemoryManager(cfg)
 
     def register_and_write(stream, pattern):
-        """Register a buffer on ``stream`` and write ``pattern`` to a chunk."""
+        """Register a buffer on ``stream`` and write ``pattern`` to a chunk.""
         with getattr(torch, torch_device_type).stream(stream):
             buf = torch.empty(chunk_bytes, dtype=torch.uint8, device=torch_device_type)
             ctx.register_gpu_buffer(buf)
