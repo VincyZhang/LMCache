@@ -26,9 +26,9 @@ x-pod-1xpu: &pod-1xpu
     - { name: dshm, emptyDir: { medium: Memory, sizeLimit: 16Gi } }
 
 steps:
-  - group: ":intel-xpu: Multiprocess (1-pod)"
+  - group: ":xpu: Multiprocess (1-pod)"
     steps:
-      - label: ":intel-xpu: lm_eval_engine_driven"
+      - label: ":xpu: lm_eval_engine_driven"
         command: |
           export LMCACHE_MP_TRANSFER_MODE="engine_driven"
           export L1_USE_LAZY="false"
@@ -36,36 +36,36 @@ steps:
           .buildkite/k3_tests/xpu/multiprocess/run.sh lm_eval
         timeout_in_minutes: 45
         retry: *flaky-retry
-        agents: { queue: "intel-xpu" }
+        agents: { queue: "xpu" }
         plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
         artifact_paths: ["*.log"]
 
-      - label: ":intel-xpu: cache_stats"
+      - label: ":xpu: cache_stats"
         command: .buildkite/k3_tests/xpu/multiprocess/run.sh cache_stats
         timeout_in_minutes: 45
-        agents: { queue: "intel-xpu" }
+        agents: { queue: "xpu" }
         plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
         artifact_paths: ["*.log"]
 
-      - label: ":intel-xpu: http_api"
+      - label: ":xpu: http_api"
         command: .buildkite/k3_tests/xpu/multiprocess/run.sh http_api
         timeout_in_minutes: 45
-        agents: { queue: "intel-xpu" }
+        agents: { queue: "xpu" }
         plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
         artifact_paths: ["*.log"]
 
-      - label: ":intel-xpu: fault_tolerance"
+      - label: ":xpu: fault_tolerance"
         command: .buildkite/k3_tests/xpu/multiprocess/run.sh fault_tolerance
         timeout_in_minutes: 45
         retry: *flaky-retry
-        agents: { queue: "intel-xpu" }
+        agents: { queue: "xpu" }
         plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
         artifact_paths: ["*.log"]
 
-      - label: ":intel-xpu: restart_recovery"
+      - label: ":xpu: restart_recovery"
         command: .buildkite/k3_tests/xpu/multiprocess/run.sh restart_recovery
         timeout_in_minutes: 45
         retry: *flaky-retry
-        agents: { queue: "intel-xpu" }
+        agents: { queue: "xpu" }
         plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
         artifact_paths: ["*.log"]
