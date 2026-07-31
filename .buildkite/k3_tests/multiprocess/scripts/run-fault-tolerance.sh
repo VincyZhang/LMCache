@@ -20,6 +20,7 @@ MODEL="${MODEL:-Qwen/Qwen3-14B}"
 BUILD_ID="${BUILD_ID:-local_$$}"
 RESULTS_DIR="${RESULTS_DIR:-/tmp/lmcache_ci_results_${BUILD_ID}}"
 LMCACHE_PORT="${LMCACHE_PORT:-6555}"
+BK_TEST_BACKEND="${BK_TEST_BACKEND:-cuda}"
 
 # Bench parameters
 NUM_PROMPTS="${NUM_PROMPTS:-50}"
@@ -67,13 +68,22 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 # Launch LMCache with L1 config
-CUDA_VISIBLE_DEVICES="${GPU_DEVICE}" \
-lmcache server \
-    --l1-size-gb "$CPU_BUFFER_SIZE" \
-    --eviction-policy LRU \
-    --max-workers "$MAX_WORKERS" \
-    --port "$LMCACHE_PORT" \
-    > "/tmp/build_${BUILD_ID}_lmcache_ft.log" 2>&1 &
+if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    lmcache server \
+        --l1-size-gb "$CPU_BUFFER_SIZE" \
+        --eviction-policy LRU \
+        --max-workers "$MAX_WORKERS" \
+        --port "$LMCACHE_PORT" \
+        > "/tmp/build_${BUILD_ID}_lmcache_ft.log" 2>&1 &
+else
+    CUDA_VISIBLE_DEVICES="${GPU_DEVICE}" \
+    lmcache server \
+        --l1-size-gb "$CPU_BUFFER_SIZE" \
+        --eviction-policy LRU \
+        --max-workers "$MAX_WORKERS" \
+        --port "$LMCACHE_PORT" \
+        > "/tmp/build_${BUILD_ID}_lmcache_ft.log" 2>&1 &
+fi
 
 NEW_LMCACHE_PID=$!
 echo "LMCache server started (PID=$NEW_LMCACHE_PID)"
@@ -81,25 +91,42 @@ sleep 10
 
 # Launch vLLM with LMCache
 GPU_MEMORY_UTIL_ARG=""
-GPU_MEMORY_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i "${GPU_DEVICE}" | tr -d ' ')
-GPU_MEMORY_GB=$((GPU_MEMORY_MB / 1024))
-if [ "$GPU_MEMORY_GB" -gt 90 ]; then
-    GPU_MEMORY_UTIL_ARG="--gpu-memory-utilization 0.5"
+if [ "${BK_TEST_BACKEND}" != "xpu" ]; then
+    GPU_MEMORY_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i "${GPU_DEVICE}" | tr -d ' ')
+    GPU_MEMORY_GB=$((GPU_MEMORY_MB / 1024))
+    if [ "$GPU_MEMORY_GB" -gt 90 ]; then
+        GPU_MEMORY_UTIL_ARG="--gpu-memory-utilization 0.5"
+    fi
 fi
 
-env -u VLLM_PORT \
-    CUDA_VISIBLE_DEVICES="${GPU_DEVICE}" \
-    VLLM_ENABLE_V1_MULTIPROCESSING=0 \
-    VLLM_SERVER_DEV_MODE=1 \
-    VLLM_BATCH_INVARIANT=1 \
-    PYTHONHASHSEED=0 \
-vllm serve "$MODEL" \
-    --kv-transfer-config "{\"kv_connector\":\"LMCacheMPConnector\", \"kv_role\":\"kv_both\", \"kv_load_failure_policy\": \"recompute\", \"kv_connector_extra_config\": {\"lmcache.mp.port\": $LMCACHE_PORT, \"lmcache.mp.mq_timeout\": 10}}" \
-    --attention-backend FLASH_ATTN \
-    --port "$VLLM_PORT" \
-    --no-async-scheduling \
-    $GPU_MEMORY_UTIL_ARG \
-    > "/tmp/build_${BUILD_ID}_vllm_ft.log" 2>&1 &
+if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    env -u VLLM_PORT \
+        VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+        VLLM_SERVER_DEV_MODE=1 \
+        VLLM_BATCH_INVARIANT=1 \
+        PYTHONHASHSEED=0 \
+    vllm serve "$MODEL" \
+        --kv-transfer-config "{\"kv_connector\":\"LMCacheMPConnector\", \"kv_role\":\"kv_both\", \"kv_load_failure_policy\": \"recompute\", \"kv_connector_extra_config\": {\"lmcache.mp.port\": $LMCACHE_PORT, \"lmcache.mp.mq_timeout\": 10}}" \
+        --attention-backend auto \
+        --port "$VLLM_PORT" \
+        --no-async-scheduling \
+        $GPU_MEMORY_UTIL_ARG \
+        > "/tmp/build_${BUILD_ID}_vllm_ft.log" 2>&1 &
+else
+    env -u VLLM_PORT \
+        CUDA_VISIBLE_DEVICES="${GPU_DEVICE}" \
+        VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+        VLLM_SERVER_DEV_MODE=1 \
+        VLLM_BATCH_INVARIANT=1 \
+        PYTHONHASHSEED=0 \
+    vllm serve "$MODEL" \
+        --kv-transfer-config "{\"kv_connector\":\"LMCacheMPConnector\", \"kv_role\":\"kv_both\", \"kv_load_failure_policy\": \"recompute\", \"kv_connector_extra_config\": {\"lmcache.mp.port\": $LMCACHE_PORT, \"lmcache.mp.mq_timeout\": 10}}" \
+        --attention-backend FLASH_ATTN \
+        --port "$VLLM_PORT" \
+        --no-async-scheduling \
+        $GPU_MEMORY_UTIL_ARG \
+        > "/tmp/build_${BUILD_ID}_vllm_ft.log" 2>&1 &
+fi
 
 NEW_VLLM_PID=$!
 echo "vLLM started (PID=$NEW_VLLM_PID)"

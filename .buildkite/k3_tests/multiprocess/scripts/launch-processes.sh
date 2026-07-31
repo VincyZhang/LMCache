@@ -16,6 +16,7 @@ CPU_BUFFER_SIZE="${CPU_BUFFER_SIZE:-80}"
 MAX_WORKERS="${MAX_WORKERS:-4}"
 MODEL="${MODEL:-Qwen/Qwen3-14B}"
 BUILD_ID="${BUILD_ID:-local_$$}"
+BK_TEST_BACKEND="${BK_TEST_BACKEND:-cuda}"
 
 # K8s assigns exactly 2 GPUs as devices 0 and 1 (overridable for local runs).
 GPU_FOR_VLLM="${GPU_FOR_VLLM:-0}"
@@ -27,15 +28,20 @@ echo "Using GPU $GPU_FOR_BASELINE for vLLM baseline"
 # Without this, vLLM allocates so much KV cache that APC covers all prefixes
 # and LMCache's cache path is never exercised, making the test pass vacuously.
 GPU_MEMORY_UTIL_ARG=""
-GPU_MEMORY_MB=$(
-    CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" python3 - <<'PY'
+GPU_MEMORY_GB=0
+if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    echo "XPU backend: skipping CUDA GPU memory probe"
+else
+    GPU_MEMORY_MB=$(
+        CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" python3 - <<'PY'
 import torch
 
 print(torch.cuda.get_device_properties(0).total_memory // (1024 * 1024))
 PY
-)
-GPU_MEMORY_GB=$((GPU_MEMORY_MB / 1024))
-echo "Detected GPU memory: ${GPU_MEMORY_GB}GB (${GPU_MEMORY_MB}MB)"
+    )
+    GPU_MEMORY_GB=$((GPU_MEMORY_MB / 1024))
+    echo "Detected GPU memory: ${GPU_MEMORY_GB}GB (${GPU_MEMORY_MB}MB)"
+fi
 
 if [ -n "${GPU_MEMORY_UTILIZATION:-}" ]; then
     # Explicit override (e.g. large models like gemma-4-31B whose ~63GB of
@@ -158,19 +164,34 @@ if [ -n "${GDS_L1_PATH:-}" ]; then
     GDS_L1_ARG="--gds-l1-path ${GDS_L1_PATH}"
 fi
 
-CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" \
-lmcache server \
-    --l1-size-gb "$CPU_BUFFER_SIZE" \
-    --eviction-policy LRU \
-    --max-workers "$MAX_WORKERS" \
-    $CHUNK_SIZE_ARG \
-    --port "$LMCACHE_PORT" \
-    ${GDS_L1_ARG} \
-    ${L1_LAZY_ARG} \
-    ${SHM_NAME_ARG} \
-    ${TRANSFER_MODE_ARG} \
-    ${SEPARATE_OBJECT_GROUPS_ARG} \
-    > "/tmp/build_${BUILD_ID}_lmcache.log" 2>&1 &
+if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    lmcache server \
+        --l1-size-gb "$CPU_BUFFER_SIZE" \
+        --eviction-policy LRU \
+        --max-workers "$MAX_WORKERS" \
+        $CHUNK_SIZE_ARG \
+        --port "$LMCACHE_PORT" \
+        ${GDS_L1_ARG} \
+        ${L1_LAZY_ARG} \
+        ${SHM_NAME_ARG} \
+        ${TRANSFER_MODE_ARG} \
+        ${SEPARATE_OBJECT_GROUPS_ARG} \
+        > "/tmp/build_${BUILD_ID}_lmcache.log" 2>&1 &
+else
+    CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" \
+    lmcache server \
+        --l1-size-gb "$CPU_BUFFER_SIZE" \
+        --eviction-policy LRU \
+        --max-workers "$MAX_WORKERS" \
+        $CHUNK_SIZE_ARG \
+        --port "$LMCACHE_PORT" \
+        ${GDS_L1_ARG} \
+        ${L1_LAZY_ARG} \
+        ${SHM_NAME_ARG} \
+        ${TRANSFER_MODE_ARG} \
+        ${SEPARATE_OBJECT_GROUPS_ARG} \
+        > "/tmp/build_${BUILD_ID}_lmcache.log" 2>&1 &
+fi
 
 LMCACHE_PID=$!
 echo "$LMCACHE_PID" >> "$PID_FILE"
@@ -228,23 +249,42 @@ PY
 )"
 echo "LMCache KV transfer configuration: ${KV_TRANSFER_CONFIG}"
 
-CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" \
-VLLM_ENABLE_V1_MULTIPROCESSING=0 \
-VLLM_SERVER_DEV_MODE=1 \
-VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
-PYTHONHASHSEED=0 \
-vllm serve "$MODEL" \
-    --kv-transfer-config "${KV_TRANSFER_CONFIG}" \
-    $ATTENTION_BACKEND_ARG \
-    --port "$vllm_port" \
-    --no-async-scheduling \
-    $MAX_MODEL_LEN_ARG \
-    $ENFORCE_EAGER_ARG \
-    $GPU_MEMORY_UTIL_ARG \
-    $MAMBA_ARGS \
-    $PREFIX_CACHING_ARG \
-    $MAX_NUM_BATCHED_TOKENS_ARG \
-    > "/tmp/build_${BUILD_ID}_vllm.log" 2>&1 &
+if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+    VLLM_SERVER_DEV_MODE=1 \
+    VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
+    PYTHONHASHSEED=0 \
+    vllm serve "$MODEL" \
+        --kv-transfer-config "${KV_TRANSFER_CONFIG}" \
+        $ATTENTION_BACKEND_ARG \
+        --port "$vllm_port" \
+        --no-async-scheduling \
+        $MAX_MODEL_LEN_ARG \
+        $ENFORCE_EAGER_ARG \
+        $GPU_MEMORY_UTIL_ARG \
+        $MAMBA_ARGS \
+        $PREFIX_CACHING_ARG \
+        $MAX_NUM_BATCHED_TOKENS_ARG \
+        > "/tmp/build_${BUILD_ID}_vllm.log" 2>&1 &
+else
+    CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" \
+    VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+    VLLM_SERVER_DEV_MODE=1 \
+    VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
+    PYTHONHASHSEED=0 \
+    vllm serve "$MODEL" \
+        --kv-transfer-config "${KV_TRANSFER_CONFIG}" \
+        $ATTENTION_BACKEND_ARG \
+        --port "$vllm_port" \
+        --no-async-scheduling \
+        $MAX_MODEL_LEN_ARG \
+        $ENFORCE_EAGER_ARG \
+        $GPU_MEMORY_UTIL_ARG \
+        $MAMBA_ARGS \
+        $PREFIX_CACHING_ARG \
+        $MAX_NUM_BATCHED_TOKENS_ARG \
+        > "/tmp/build_${BUILD_ID}_vllm.log" 2>&1 &
+fi
 
 VLLM_PID=$!
 echo "$VLLM_PID" >> "$PID_FILE"
@@ -257,20 +297,36 @@ if [[ "${LAUNCH_BASELINE:-true}" == "true" ]]; then
     echo "=== Launching vLLM baseline ==="
     echo "Port: $vllm_baseline_port"
 
-    CUDA_VISIBLE_DEVICES="${GPU_FOR_BASELINE}" \
-    VLLM_ENABLE_V1_MULTIPROCESSING=0 \
-    VLLM_SERVER_DEV_MODE=1 \
-    VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
-    PYTHONHASHSEED=0 \
-    vllm serve "$MODEL" \
-        $ATTENTION_BACKEND_ARG \
-        --port "$vllm_baseline_port" \
-        --no-async-scheduling \
-        $MAX_MODEL_LEN_ARG \
-        $ENFORCE_EAGER_ARG \
-        $GPU_MEMORY_UTIL_ARG \
-        $PREFIX_CACHING_ARG \
-        > "/tmp/build_${BUILD_ID}_vllm_baseline.log" 2>&1 &
+    if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+        VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+        VLLM_SERVER_DEV_MODE=1 \
+        VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
+        PYTHONHASHSEED=0 \
+        vllm serve "$MODEL" \
+            $ATTENTION_BACKEND_ARG \
+            --port "$vllm_baseline_port" \
+            --no-async-scheduling \
+            $MAX_MODEL_LEN_ARG \
+            $ENFORCE_EAGER_ARG \
+            $GPU_MEMORY_UTIL_ARG \
+            $PREFIX_CACHING_ARG \
+            > "/tmp/build_${BUILD_ID}_vllm_baseline.log" 2>&1 &
+    else
+        CUDA_VISIBLE_DEVICES="${GPU_FOR_BASELINE}" \
+        VLLM_ENABLE_V1_MULTIPROCESSING=0 \
+        VLLM_SERVER_DEV_MODE=1 \
+        VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
+        PYTHONHASHSEED=0 \
+        vllm serve "$MODEL" \
+            $ATTENTION_BACKEND_ARG \
+            --port "$vllm_baseline_port" \
+            --no-async-scheduling \
+            $MAX_MODEL_LEN_ARG \
+            $ENFORCE_EAGER_ARG \
+            $GPU_MEMORY_UTIL_ARG \
+            $PREFIX_CACHING_ARG \
+            > "/tmp/build_${BUILD_ID}_vllm_baseline.log" 2>&1 &
+    fi
 
     VLLM_BASELINE_PID=$!
     echo "$VLLM_BASELINE_PID" >> "$PID_FILE"
