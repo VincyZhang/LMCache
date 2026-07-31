@@ -10,4 +10,4 @@ export LAUNCH_BASELINE="false"
 # Let vLLM pick backend on XPU.
 export ATTENTION_BACKEND="${ATTENTION_BACKEND:-auto}"
 
-exec bash "$(cd "$(dirname "$0")/../../.." && pwd)/multiprocess/run.sh" "$@"
+exec bash "$(cd "$(dirname "$0")/../.." && pwd)/multiprocess/run.sh" "$@"
