@@ -165,6 +165,7 @@ if [ -n "${GDS_L1_PATH:-}" ]; then
 fi
 
 if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
     lmcache server \
         --l1-size-gb "$CPU_BUFFER_SIZE" \
         --eviction-policy LRU \
