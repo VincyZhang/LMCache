@@ -251,6 +251,7 @@ PY
 echo "LMCache KV transfer configuration: ${KV_TRANSFER_CONFIG}"
 
 if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+    source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
     VLLM_ENABLE_V1_MULTIPROCESSING=0 \
     VLLM_SERVER_DEV_MODE=1 \
     VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
@@ -299,6 +300,7 @@ if [[ "${LAUNCH_BASELINE:-true}" == "true" ]]; then
     echo "Port: $vllm_baseline_port"
 
     if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+        source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
         VLLM_ENABLE_V1_MULTIPROCESSING=0 \
         VLLM_SERVER_DEV_MODE=1 \
         VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
