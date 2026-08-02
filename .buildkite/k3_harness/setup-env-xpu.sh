@@ -23,15 +23,33 @@ assert torch.xpu.is_available(), "Intel XPU not available in pod"
 print("torch.xpu.is_available() = True")
 PY
 
-echo "--- :python: Install/upgrade vLLM and runtime deps for XPU"
-# Keep the package list aligned with setup-env.sh's runtime expectations,
-# but without CUDA-specific index settings.
-uv pip install -U "vllm[runai,tensorizer,flashinfer]>=0.0.0.dev0" \
-    --reinstall-package transformers \
-    --reinstall-package tokenizers \
-    --reinstall-package huggingface-hub \
-    --reinstall-package safetensors \
-    --reinstall-package vllm
+echo "--- :mag: Verify prebuilt XPU vLLM stack ABI compatibility"
+# IMPORTANT: the XPU CI image ships a matched torch + vllm + vllm_xpu_kernels
+# stack. Reinstalling vLLM from PyPI can silently break ABI compatibility and
+# fail later with errors like:
+#   undefined symbol ... in vllm_xpu_kernels/_C.abi3.so
+# Keep the prebuilt stack intact and fail fast here with actionable diagnostics.
+python - <<'PY'
+import importlib
+import traceback
+
+import torch
+
+print(f"torch={torch.__version__}, torch.xpu.is_available={torch.xpu.is_available()}")
+
+for mod in ("vllm", "vllm_xpu_kernels"):
+    try:
+        m = importlib.import_module(mod)
+        print(f"{mod}={getattr(m, '__version__', 'unknown')}")
+    except Exception as e:
+        print(f"ERROR importing {mod}: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise SystemExit(
+            "XPU runtime stack mismatch detected. "
+            "Use a CI image with matched torch/vllm/vllm_xpu_kernels versions "
+            "or pin/install them together as one known-good set."
+        )
+PY
 
 echo "--- :python: Install LMCache from source"
 export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE:-0.0.0+ci}"
