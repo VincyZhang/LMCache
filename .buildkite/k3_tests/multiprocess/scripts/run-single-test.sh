@@ -17,6 +17,7 @@ cd "${REPO_ROOT}"
 source .buildkite/k3_tests/common_scripts/helpers.sh
 
 # ── Configuration ────────────────────────────────────────────
+export TORCH_DEVICE_TYPE="${TORCH_DEVICE_TYPE:-cuda}"
 export LMCACHE_PORT="${LMCACHE_PORT:-6555}"
 export VLLM_PORT="${VLLM_PORT:-8000}"
 export VLLM_BASELINE_PORT="${VLLM_BASELINE_PORT:-9000}"
@@ -96,6 +97,7 @@ echo "============================================"
 echo "=== LMCache Multiprocessing Test: ${TEST_NAME} ==="
 echo "============================================"
 echo "Build ID: $BUILD_ID"
+echo "Torch device type: $TORCH_DEVICE_TYPE"
 echo "Model: $MODEL"
 echo "LMCache port: $LMCACHE_PORT"
 echo "vLLM port: $VLLM_PORT"

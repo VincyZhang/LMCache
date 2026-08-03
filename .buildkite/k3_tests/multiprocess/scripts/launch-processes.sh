@@ -16,20 +16,30 @@ CPU_BUFFER_SIZE="${CPU_BUFFER_SIZE:-80}"
 MAX_WORKERS="${MAX_WORKERS:-4}"
 MODEL="${MODEL:-Qwen/Qwen3-14B}"
 BUILD_ID="${BUILD_ID:-local_$$}"
-BK_TEST_BACKEND="${BK_TEST_BACKEND:-cuda}"
+TORCH_DEVICE_TYPE="${TORCH_DEVICE_TYPE:-cuda}"
+
+# Pick the device affinity env var once, then reuse it for all launched processes.
+DEVICE_AFFINITY_VAR="CUDA_VISIBLE_DEVICES"
+if [ "${TORCH_DEVICE_TYPE}" = "xpu" ]; then
+    DEVICE_AFFINITY_VAR="ZE_AFFINITY_MASK"
+    if [ -f /opt/intel/oneapi/setvars.sh ]; then
+        # shellcheck disable=SC1091
+        source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
+    fi
+fi
 
 # K8s assigns exactly 2 GPUs as devices 0 and 1 (overridable for local runs).
 GPU_FOR_VLLM="${GPU_FOR_VLLM:-0}"
 GPU_FOR_BASELINE="${GPU_FOR_BASELINE:-1}"
-echo "Using GPU $GPU_FOR_VLLM for vLLM with LMCache"
-echo "Using GPU $GPU_FOR_BASELINE for vLLM baseline"
+echo "Using CARD $GPU_FOR_VLLM for vLLM with LMCache"
+echo "Using CARD $GPU_FOR_BASELINE for vLLM baseline"
 
 # Check GPU memory and set gpu-memory-utilization for very large GPUs.
 # Without this, vLLM allocates so much KV cache that APC covers all prefixes
 # and LMCache's cache path is never exercised, making the test pass vacuously.
 GPU_MEMORY_UTIL_ARG=""
 GPU_MEMORY_GB=0
-if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
+if [ "${TORCH_DEVICE_TYPE}" = "xpu" ]; then
     echo "XPU backend: skipping CUDA GPU memory probe"
 else
     GPU_MEMORY_MB=$(
@@ -164,35 +174,19 @@ if [ -n "${GDS_L1_PATH:-}" ]; then
     GDS_L1_ARG="--gds-l1-path ${GDS_L1_PATH}"
 fi
 
-if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
-    source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
-    lmcache server \
-        --l1-size-gb "$CPU_BUFFER_SIZE" \
-        --eviction-policy LRU \
-        --max-workers "$MAX_WORKERS" \
-        $CHUNK_SIZE_ARG \
-        --port "$LMCACHE_PORT" \
-        ${GDS_L1_ARG} \
-        ${L1_LAZY_ARG} \
-        ${SHM_NAME_ARG} \
-        ${TRANSFER_MODE_ARG} \
-        ${SEPARATE_OBJECT_GROUPS_ARG} \
-        > "/tmp/build_${BUILD_ID}_lmcache.log" 2>&1 &
-else
-    CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" \
-    lmcache server \
-        --l1-size-gb "$CPU_BUFFER_SIZE" \
-        --eviction-policy LRU \
-        --max-workers "$MAX_WORKERS" \
-        $CHUNK_SIZE_ARG \
-        --port "$LMCACHE_PORT" \
-        ${GDS_L1_ARG} \
-        ${L1_LAZY_ARG} \
-        ${SHM_NAME_ARG} \
-        ${TRANSFER_MODE_ARG} \
-        ${SEPARATE_OBJECT_GROUPS_ARG} \
-        > "/tmp/build_${BUILD_ID}_lmcache.log" 2>&1 &
-fi
+env "${DEVICE_AFFINITY_VAR}=${GPU_FOR_VLLM}" \
+lmcache server \
+    --l1-size-gb "$CPU_BUFFER_SIZE" \
+    --eviction-policy LRU \
+    --max-workers "$MAX_WORKERS" \
+    $CHUNK_SIZE_ARG \
+    --port "$LMCACHE_PORT" \
+    ${GDS_L1_ARG} \
+    ${L1_LAZY_ARG} \
+    ${SHM_NAME_ARG} \
+    ${TRANSFER_MODE_ARG} \
+    ${SEPARATE_OBJECT_GROUPS_ARG} \
+    > "/tmp/build_${BUILD_ID}_lmcache.log" 2>&1 &
 
 LMCACHE_PID=$!
 echo "$LMCACHE_PID" >> "$PID_FILE"
@@ -250,8 +244,7 @@ PY
 )"
 echo "LMCache KV transfer configuration: ${KV_TRANSFER_CONFIG}"
 
-if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
-    source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
+env "${DEVICE_AFFINITY_VAR}=${GPU_FOR_VLLM}" \
     VLLM_ENABLE_V1_MULTIPROCESSING=0 \
     VLLM_SERVER_DEV_MODE=1 \
     VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
@@ -268,25 +261,6 @@ if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
         $PREFIX_CACHING_ARG \
         $MAX_NUM_BATCHED_TOKENS_ARG \
         > "/tmp/build_${BUILD_ID}_vllm.log" 2>&1 &
-else
-    CUDA_VISIBLE_DEVICES="${GPU_FOR_VLLM}" \
-    VLLM_ENABLE_V1_MULTIPROCESSING=0 \
-    VLLM_SERVER_DEV_MODE=1 \
-    VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
-    PYTHONHASHSEED=0 \
-    vllm serve "$MODEL" \
-        --kv-transfer-config "${KV_TRANSFER_CONFIG}" \
-        $ATTENTION_BACKEND_ARG \
-        --port "$vllm_port" \
-        --no-async-scheduling \
-        $MAX_MODEL_LEN_ARG \
-        $ENFORCE_EAGER_ARG \
-        $GPU_MEMORY_UTIL_ARG \
-        $MAMBA_ARGS \
-        $PREFIX_CACHING_ARG \
-        $MAX_NUM_BATCHED_TOKENS_ARG \
-        > "/tmp/build_${BUILD_ID}_vllm.log" 2>&1 &
-fi
 
 VLLM_PID=$!
 echo "$VLLM_PID" >> "$PID_FILE"
@@ -299,8 +273,7 @@ if [[ "${LAUNCH_BASELINE:-true}" == "true" ]]; then
     echo "=== Launching vLLM baseline ==="
     echo "Port: $vllm_baseline_port"
 
-    if [ "${BK_TEST_BACKEND}" = "xpu" ]; then
-        source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
+    env "${DEVICE_AFFINITY_VAR}=${GPU_FOR_BASELINE}" \
         VLLM_ENABLE_V1_MULTIPROCESSING=0 \
         VLLM_SERVER_DEV_MODE=1 \
         VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
@@ -314,22 +287,6 @@ if [[ "${LAUNCH_BASELINE:-true}" == "true" ]]; then
             $GPU_MEMORY_UTIL_ARG \
             $PREFIX_CACHING_ARG \
             > "/tmp/build_${BUILD_ID}_vllm_baseline.log" 2>&1 &
-    else
-        CUDA_VISIBLE_DEVICES="${GPU_FOR_BASELINE}" \
-        VLLM_ENABLE_V1_MULTIPROCESSING=0 \
-        VLLM_SERVER_DEV_MODE=1 \
-        VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
-        PYTHONHASHSEED=0 \
-        vllm serve "$MODEL" \
-            $ATTENTION_BACKEND_ARG \
-            --port "$vllm_baseline_port" \
-            --no-async-scheduling \
-            $MAX_MODEL_LEN_ARG \
-            $ENFORCE_EAGER_ARG \
-            $GPU_MEMORY_UTIL_ARG \
-            $PREFIX_CACHING_ARG \
-            > "/tmp/build_${BUILD_ID}_vllm_baseline.log" 2>&1 &
-    fi
 
     VLLM_BASELINE_PID=$!
     echo "$VLLM_BASELINE_PID" >> "$PID_FILE"
