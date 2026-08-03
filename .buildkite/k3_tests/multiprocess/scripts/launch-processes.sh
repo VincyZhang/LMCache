@@ -76,6 +76,14 @@ if [ -n "$ATTENTION_BACKEND" ] && [ "$ATTENTION_BACKEND" != "auto" ]; then
     ATTENTION_BACKEND_ARG="--attention-backend $ATTENTION_BACKEND"
 fi
 
+# Optional low-level backend override for A/B debugging.
+# Example: VLLM_ATTENTION_BACKEND=XFORMERS (or TRITON_ATTN) to bypass FA2.
+VLLM_ATTENTION_BACKEND_ENV=()
+if [ -n "${VLLM_ATTENTION_BACKEND:-}" ]; then
+    echo "Using VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND}"
+    VLLM_ATTENTION_BACKEND_ENV=(VLLM_ATTENTION_BACKEND="${VLLM_ATTENTION_BACKEND}")
+fi
+
 # Optionally run vLLM in eager mode (skip CUDA graph capture) for both servers.
 # Off by default: verified to break the bit-exact run1 == run2 check in the
 # determinism tests (lm_eval) -- eager changes the kernel path enough to diverge
@@ -255,6 +263,7 @@ echo "LMCache KV transfer configuration: ${KV_TRANSFER_CONFIG}"
 
 env "${DEVICE_AFFINITY_VAR}=${GPU_FOR_VLLM}" \
     "${VLLM_DEVICE_ENV[@]}" \
+    "${VLLM_ATTENTION_BACKEND_ENV[@]}" \
     VLLM_ENABLE_V1_MULTIPROCESSING=0 \
     VLLM_SERVER_DEV_MODE=1 \
     VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
@@ -285,6 +294,7 @@ if [[ "${LAUNCH_BASELINE:-true}" == "true" ]]; then
 
     env "${DEVICE_AFFINITY_VAR}=${GPU_FOR_BASELINE}" \
         "${VLLM_DEVICE_ENV[@]}" \
+        "${VLLM_ATTENTION_BACKEND_ENV[@]}" \
         VLLM_ENABLE_V1_MULTIPROCESSING=0 \
         VLLM_SERVER_DEV_MODE=1 \
         VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \

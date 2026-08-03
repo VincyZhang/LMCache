@@ -10,6 +10,8 @@ export BK_SETUP_ENV_SCRIPT=".buildkite/k3_harness/setup-lmcache-only-env.sh"
 export LAUNCH_BASELINE="false"
 # Let vLLM pick backend on XPU.
 export ATTENTION_BACKEND="${ATTENTION_BACKEND:-auto}"
+# Experimental default: force a non-FA2 backend first for startup A/B.
+export VLLM_ATTENTION_BACKEND="${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}"
 # First-time model pulls on XPU pods can be slow; keep timeout overridable.
 export MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-1800}"
 # Turn on verbose vLLM logs by default to debug device-type inference issues.

@@ -12,6 +12,77 @@ VLLM_BASELINE_PORT="${VLLM_BASELINE_PORT:-9000}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-600}"
 BUILD_ID="${BUILD_ID:-local_$$}"
 
+print_process_diagnostics() {
+    local pid="$1"
+    local role="$2"
+
+    echo "=== Process diagnostics: ${role} (pid=${pid}) ==="
+
+    if ! ps -p "$pid" > /dev/null 2>&1; then
+        echo "Process not running: pid=${pid}"
+        return 0
+    fi
+
+    echo "--- ps summary ---"
+    ps -p "$pid" -o pid,ppid,stat,etime,pcpu,pmem,comm,args || true
+
+    echo "--- /proc status (selected) ---"
+    grep -E "^(Name|State|Tgid|Pid|PPid|Threads|VmRSS|VmSize|voluntary_ctxt_switches|nonvoluntary_ctxt_switches):" \
+        "/proc/${pid}/status" || true
+
+    echo "--- thread view (top CPU first) ---"
+    ps -Lp "$pid" -o pid,tid,psr,pcpu,stat,wchan:32,comm --sort=-pcpu | head -n 40 || true
+
+    if [ -r "/proc/${pid}/wchan" ]; then
+        echo "--- wchan ---"
+        cat "/proc/${pid}/wchan" || true
+    fi
+
+    if [ -r "/proc/${pid}/stack" ]; then
+        echo "--- kernel stack ---"
+        cat "/proc/${pid}/stack" || true
+    fi
+
+    if command -v py-spy >/dev/null 2>&1; then
+        echo "--- py-spy dump ---"
+        timeout 20s py-spy dump --pid "$pid" --native || true
+    elif command -v gdb >/dev/null 2>&1; then
+        echo "--- gdb thread backtrace (best effort) ---"
+        timeout 20s gdb -q -n -batch \
+            -ex "set pagination off" \
+            -ex "thread apply all bt" \
+            -p "$pid" || true
+    else
+        echo "Neither py-spy nor gdb is available for user-space backtraces"
+    fi
+
+    echo "=== End process diagnostics: ${role} (pid=${pid}) ==="
+}
+
+print_engine_timeout_diagnostics() {
+    local logfile="$1"
+
+    if [ ! -f "$logfile" ]; then
+        return 0
+    fi
+
+    local engine_pid
+    engine_pid=$(grep -oE "\(EngineCore pid=[0-9]+\)" "$logfile" | tail -n 1 | sed -E 's/.*pid=([0-9]+).*/\1/' || true)
+    if [ -n "$engine_pid" ]; then
+        print_process_diagnostics "$engine_pid" "EngineCore"
+    else
+        echo "EngineCore PID not found in $logfile"
+    fi
+
+    local api_pid
+    api_pid=$(grep -oE "\(APIServer pid=[0-9]+\)" "$logfile" | tail -n 1 | sed -E 's/.*pid=([0-9]+).*/\1/' || true)
+    if [ -n "$api_pid" ]; then
+        print_process_diagnostics "$api_pid" "APIServer"
+    else
+        echo "APIServer PID not found in $logfile"
+    fi
+}
+
 print_log_diagnostics() {
     local logfile="$1"
 
@@ -59,6 +130,9 @@ wait_for_vllm_server() {
             echo ""
             echo "=== $description log diagnostics ==="
             print_log_diagnostics "$logfile"
+            echo ""
+            echo "=== $description process diagnostics ==="
+            print_engine_timeout_diagnostics "$logfile"
             return 1
         fi
 
