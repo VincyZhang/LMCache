@@ -99,8 +99,13 @@ if [ -n "${CHUNK_SIZE:-}" ]; then
     CHUNK_SIZE_ARG="--chunk-size ${CHUNK_SIZE}"
 fi
 
-# vLLM batch-invariant mode. On by default; GDN/Mamba backends do not support it.
-BATCH_INVARIANT="${BATCH_INVARIANT:-1}"
+# vLLM batch-invariant mode. Keep CUDA default on for determinism tests.
+# On XPU, default off to avoid vLLM entering CUDA-only BLAS preference code.
+if [ "${TORCH_DEVICE_TYPE}" = "xpu" ]; then
+    BATCH_INVARIANT="${BATCH_INVARIANT:-0}"
+else
+    BATCH_INVARIANT="${BATCH_INVARIANT:-1}"
+fi
 
 # Prefix-caching policy. Default behavior is unchanged: ordinary models rely on
 # vLLM's existing default, while hybrid Mamba models explicitly enable prefix

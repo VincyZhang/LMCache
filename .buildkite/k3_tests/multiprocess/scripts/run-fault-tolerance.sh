@@ -29,11 +29,14 @@ if [ "${TORCH_DEVICE_TYPE}" = "xpu" ]; then
     DEVICE_AFFINITY_VAR="ZE_AFFINITY_MASK"
     ATTENTION_BACKEND="auto"
     VLLM_DEVICE_ENV=(VLLM_TARGET_DEVICE="xpu")
+    BATCH_INVARIANT="${BATCH_INVARIANT:-0}"
     unset CUDA_VISIBLE_DEVICES || true
     if [ -f /opt/intel/oneapi/setvars.sh ]; then
         # shellcheck disable=SC1091
         source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
     fi
+else
+    BATCH_INVARIANT="${BATCH_INVARIANT:-1}"
 fi
 
 # Bench parameters
@@ -111,7 +114,7 @@ env -u VLLM_PORT \
     "${VLLM_DEVICE_ENV[@]}" \
     VLLM_ENABLE_V1_MULTIPROCESSING=0 \
     VLLM_SERVER_DEV_MODE=1 \
-    VLLM_BATCH_INVARIANT=1 \
+    VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
     PYTHONHASHSEED=0 \
 vllm serve "$MODEL" \
     --kv-transfer-config "{\"kv_connector\":\"LMCacheMPConnector\", \"kv_role\":\"kv_both\", \"kv_load_failure_policy\": \"recompute\", \"kv_connector_extra_config\": {\"lmcache.mp.port\": $LMCACHE_PORT, \"lmcache.mp.mq_timeout\": 10}}" \
