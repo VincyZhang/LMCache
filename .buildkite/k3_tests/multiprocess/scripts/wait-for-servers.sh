@@ -12,6 +12,30 @@ VLLM_BASELINE_PORT="${VLLM_BASELINE_PORT:-9000}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-600}"
 BUILD_ID="${BUILD_ID:-local_$$}"
 
+print_log_diagnostics() {
+    local logfile="$1"
+
+    if [ ! -f "$logfile" ]; then
+        echo "Log file not found: $logfile"
+        return 0
+    fi
+
+    echo "=== Matched error markers ==="
+    grep -nE "ERROR|Error|Traceback|Exception|RuntimeError|ValueError|OSError|Timeout|Failed|failed|huggingface|download|Downloading" "$logfile" | tail -120 || true
+    echo ""
+
+    echo "=== Last 200 lines (full) ==="
+    tail -200 "$logfile" || true
+    echo ""
+
+    echo "=== Last 200 lines (without engine-wait noise) ==="
+    grep -vE "Waiting for [0-9]+ local, [0-9]+ remote core engine proc\(s\) to start" "$logfile" | tail -200 || true
+    echo ""
+
+    echo "=== First 120 lines (startup context) ==="
+    sed -n '1,120p' "$logfile" || true
+}
+
 # Wait for a vLLM server with health check
 wait_for_vllm_server() {
     local port="$1"
@@ -33,8 +57,8 @@ wait_for_vllm_server() {
         if [ "$current_time" -ge "$end_time" ]; then
             echo "Timeout: $description did not become ready within ${MAX_WAIT_SECONDS}s"
             echo ""
-            echo "=== $description log (last 100 lines) ==="
-            tail -100 "$logfile" 2>/dev/null || true
+            echo "=== $description log diagnostics ==="
+            print_log_diagnostics "$logfile"
             return 1
         fi
 
