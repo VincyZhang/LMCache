@@ -24,9 +24,12 @@ TORCH_DEVICE_TYPE="${TORCH_DEVICE_TYPE:-cuda}"
 ATTENTION_BACKEND="FLASH_ATTN"
 # Pick the device affinity env var once, then reuse it for all launched processes.
 DEVICE_AFFINITY_VAR="CUDA_VISIBLE_DEVICES"
+VLLM_DEVICE_ENV=(VLLM_TARGET_DEVICE="cuda")
 if [ "${TORCH_DEVICE_TYPE}" = "xpu" ]; then
     DEVICE_AFFINITY_VAR="ZE_AFFINITY_MASK"
     ATTENTION_BACKEND="auto"
+    VLLM_DEVICE_ENV=(VLLM_TARGET_DEVICE="xpu")
+    unset CUDA_VISIBLE_DEVICES || true
     if [ -f /opt/intel/oneapi/setvars.sh ]; then
         # shellcheck disable=SC1091
         source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
@@ -80,6 +83,7 @@ fi
 
 # Launch LMCache with L1 config
 env "${DEVICE_AFFINITY_VAR}=${GPU_DEVICE}" \
+    "${VLLM_DEVICE_ENV[@]}" \
 lmcache server \
     --l1-size-gb "$CPU_BUFFER_SIZE" \
     --eviction-policy LRU \
@@ -104,6 +108,7 @@ fi
 
 env -u VLLM_PORT \
     "${DEVICE_AFFINITY_VAR}=${GPU_DEVICE}" \
+    "${VLLM_DEVICE_ENV[@]}" \
     VLLM_ENABLE_V1_MULTIPROCESSING=0 \
     VLLM_SERVER_DEV_MODE=1 \
     VLLM_BATCH_INVARIANT=1 \
