@@ -11,6 +11,29 @@ VLLM_PORT="${VLLM_PORT:-8000}"
 VLLM_BASELINE_PORT="${VLLM_BASELINE_PORT:-9000}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-600}"
 BUILD_ID="${BUILD_ID:-local_$$}"
+PID_FILE="/tmp/lmcache_mp_pids_${BUILD_ID}"
+
+read_pid_from_file() {
+    local index="$1"
+
+    if [ ! -f "$PID_FILE" ]; then
+        return 1
+    fi
+
+    # PID order from launch-processes.sh:
+    # 1) LMCache, 2) vLLM with LMCache, 3) baseline (optional)
+    sed -n "${index}p" "$PID_FILE" 2>/dev/null || true
+}
+
+process_alive() {
+    local pid="$1"
+
+    if [ -z "$pid" ]; then
+        return 0
+    fi
+
+    kill -0 "$pid" 2>/dev/null
+}
 
 print_process_diagnostics() {
     local pid="$1"
@@ -112,6 +135,9 @@ wait_for_vllm_server() {
     local port="$1"
     local description="$2"
     local logfile="$3"
+    local expected_pid="${4:-}"
+    local health_url="http://127.0.0.1:${port}/health"
+    local models_url="http://127.0.0.1:${port}/v1/models"
 
     echo "=== Waiting for $description to be ready ==="
     echo "Port: $port, Max wait: ${MAX_WAIT_SECONDS}s"
@@ -136,12 +162,24 @@ wait_for_vllm_server() {
             return 1
         fi
 
-        if curl -sf "http://localhost:${port}/health" > /dev/null 2>&1; then
+        if ! process_alive "$expected_pid"; then
+            echo "$description exited before becoming ready (pid=${expected_pid:-unknown})"
+            echo ""
+            echo "=== $description log diagnostics ==="
+            print_log_diagnostics "$logfile"
+            echo ""
+            echo "=== $description process diagnostics ==="
+            print_engine_timeout_diagnostics "$logfile"
+            return 1
+        fi
+
+        # Bypass proxy for localhost checks; CI often exports http_proxy.
+        if curl --noproxy '*' -sf "$health_url" > /dev/null 2>&1; then
             echo "$description is ready! (took ${elapsed}s)"
             return 0
         fi
 
-        if curl -sf "http://localhost:${port}/v1/models" > /dev/null 2>&1; then
+        if curl --noproxy '*' -sf "$models_url" > /dev/null 2>&1; then
             echo "$description is ready! (took ${elapsed}s)"
             return 0
         fi
@@ -152,8 +190,11 @@ wait_for_vllm_server() {
 }
 
 # Wait for both servers (they start simultaneously)
+VLLM_PID="$(read_pid_from_file 2 || true)"
+VLLM_BASELINE_PID="$(read_pid_from_file 3 || true)"
+
 if ! wait_for_vllm_server "$VLLM_PORT" "vLLM with LMCache" \
-        "/tmp/build_${BUILD_ID}_vllm.log"; then
+    "/tmp/build_${BUILD_ID}_vllm.log" "$VLLM_PID"; then
     exit 1
 fi
 
@@ -161,7 +202,7 @@ fi
 # LAUNCH_BASELINE=false in launch-processes.sh and never start it.
 if [[ "${LAUNCH_BASELINE:-true}" == "true" ]]; then
     if ! wait_for_vllm_server "$VLLM_BASELINE_PORT" "vLLM baseline (without LMCache)" \
-            "/tmp/build_${BUILD_ID}_vllm_baseline.log"; then
+            "/tmp/build_${BUILD_ID}_vllm_baseline.log" "$VLLM_BASELINE_PID"; then
         exit 1
     fi
 fi
