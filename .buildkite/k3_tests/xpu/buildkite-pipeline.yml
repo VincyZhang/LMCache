@@ -11,6 +11,6 @@ steps:
     command: |
       source .buildkite/k3_harness/resolve-pinned-xpu.sh
       export XPU_IMAGE_REF="${XPU_IMAGE_REF:-${PINNED_XPU_IMAGE_REF:-vllm/vllm-openai-xpu:nightly}}"
-      export XPU_IMAGE_TAG="${XPU_IMAGE_TAG:-${PINNED_XPU_IMAGE_TAG:-nightly}}"
+      export XPU_IMAGE_TAG="${XPU_IMAGE_TAG:-nightly}"
       export XPU_IMAGE_DIGEST="${XPU_IMAGE_DIGEST:-${PINNED_XPU_IMAGE_DIGEST:-}}"
       bash .buildkite/k3_tests/common_scripts/upload-pipeline.sh .buildkite/k3_tests/xpu/pipeline.yml

@@ -78,8 +78,7 @@ Install LMCache
                                 --entrypoint bash vllm/vllm-openai-rocm:v0.25.0
 
                             VERSION=0.5.3  # replace with target release
-                            # Match the XPU wheel filename, e.g. ${VERSION}+xpu.v0.26.0.<digest12>
-                            pip install lmcache==${VERSION}+xpu.v0.26.0.<digest12> --no-deps \
+                            pip install lmcache==${VERSION}+rocm7.2 --no-deps \
                                 --find-links https://github.com/LMCache/LMCache/releases/expanded_assets/v${VERSION}-rocm
 
                         .. note::
@@ -88,33 +87,12 @@ Install LMCache
                             host image at runtime). Match the wheel's minor torch/ROCm version to your
                             container; for other bases, use the **From Source** tab.
 
-                    .. tab-item:: Intel XPU
-
-                        The Intel XPU wheel is ABI-matched to the upstream
-                        ``vllm/vllm-openai-xpu`` runtime image (torch-xpu and oneAPI/SYCL).
-                        It is published to a dedicated
-                        `GitHub Release <https://github.com/LMCache/LMCache/releases>`__ rather than PyPI.
-
-                        Install directly inside the matching upstream vLLM XPU container. Torch and the
-                        oneAPI/SYCL runtime are already present, so ``--no-deps`` preserves that runtime stack:
-
-                        .. code-block:: bash
-
-                            docker run -it --device /dev/dri --shm-size=4g \
-                                --entrypoint bash vllm/vllm-openai-xpu:<matching-tag>
-
-                            VERSION=0.5.3  # replace with target release
-                            # Copy the full local suffix from the XPU wheel filename.
-                            XPU_VERSION="${VERSION}+xpu.v0.26.0.0123456789ab"
-                            pip install "lmcache==${XPU_VERSION}" --no-deps \
-                                --find-links https://github.com/LMCache/LMCache/releases/expanded_assets/v${VERSION}-xpu
-
                         .. note::
 
-                            The wheel excludes torch and oneAPI/SYCL runtime libraries, which bind to the
-                            host image at runtime. Its filename encodes the XPU runtime tag and the first
-                            12 hex characters of the image digest; use the matching image for installation.
-                            For other bases, use the **From Source** tab.
+                            The ROCm wheel carries a ``+rocm7.2`` PEP 440 local version, so
+                            ``pip show lmcache`` reports which build is installed and the ROCm
+                            build can be requested explicitly. A bare ``lmcache==${VERSION}``
+                            also resolves it, since ``==`` ignores the local segment.
 
             .. tab-item:: Nightly
 
@@ -279,7 +257,7 @@ Install LMCache
 
                 .. code-block:: bash
 
-                    docker pull vllm/vllm-openai-xpu:v0.26.0
+                    docker pull intel/vllm:0.17.0-xpu
 
         See :ref:`docker_deployment` for running the container and ROCm images.
 
@@ -319,4 +297,4 @@ Verify Installation
 
 .. code-block:: bash
 
-    python -c "import lmcache.c_ops"
+    python -c "import lmcache.cuda_ops"

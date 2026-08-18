@@ -143,10 +143,11 @@ for os in $ALL_OSS; do
     # would never be created.
     if ! CI_PLATFORM=github_actions \
         PIN_BACKEND=cpu \
+        PIN_RUNTIME_ID="$os" \
+        VLLM_INSTALLATION_FORM=wheel \
         PIN_VLLM_STATUS="$pin_status" \
         PIN_VLLM_REASON="$pin_reason" \
         PIN_VLLM_DRY_RUN="${DRY_RUN:-0}" \
-        OS_PLATFORM="$os" \
         VLLM_VERSION="$pin_version" \
         bash "${PIN_SCRIPT}"; then
         printf '::warning::Failed to record %s result for %s\n' \

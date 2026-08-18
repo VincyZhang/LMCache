@@ -5,7 +5,6 @@
 # Buildkite. Ordinary XPU CI fetches the most recently verified runtime instead.
 
 PINNED_XPU_IMAGE_REF="${PINNED_XPU_IMAGE_REF:-}"
-PINNED_XPU_IMAGE_TAG="${PINNED_XPU_IMAGE_TAG:-}"
 PINNED_XPU_IMAGE_DIGEST="${PINNED_XPU_IMAGE_DIGEST:-}"
 USE_PINNED_XPU="${USE_PINNED_XPU:-true}"
 LMCACHE_RUNTIME_PIN_URL="${LMCACHE_RUNTIME_PIN_URL:-https://raw.githubusercontent.com/LMCache/LMCache/buildkite_latest_tested_vllm/verified_runtimes.json}"
@@ -24,7 +23,6 @@ except (KeyError, json.JSONDecodeError):
     record = {}
 for name, key in (
     ("PINNED_XPU_IMAGE_REF", "image_ref"),
-    ("PINNED_XPU_IMAGE_TAG", "image_tag"),
     ("PINNED_XPU_IMAGE_DIGEST", "image_digest"),
 ):
     print(f"{name}={shlex.quote(record.get(key) or str())}")
@@ -32,7 +30,7 @@ for name, key in (
     fi
 fi
 
-export PINNED_XPU_IMAGE_REF PINNED_XPU_IMAGE_TAG PINNED_XPU_IMAGE_DIGEST
+export PINNED_XPU_IMAGE_REF PINNED_XPU_IMAGE_DIGEST
 
 if [[ -n "${PINNED_XPU_IMAGE_REF}" ]]; then
     echo "[resolve-pinned-xpu] Using verified runtime: ${PINNED_XPU_IMAGE_REF}" >&2

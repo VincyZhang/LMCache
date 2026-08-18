@@ -28,7 +28,6 @@
 #
 # After sourcing the following are set (possibly empty) and exported:
 #   PINNED_VLLM_VERSION         -- e.g. 0.23.1rc1.dev508+gc6dd32a81
-#   PINNED_VLLM_FULL_SHA        -- 40-char commit SHA, if recorded in pin
 #   PINNED_VLLM_ARCHIVE_INDEX_URL
 #                               -- permanent PEP 503 simple index, if recorded
 #
@@ -38,7 +37,6 @@
 # Allow re-sourcing without "unbound variable" complaints under set -u.
 PINNED_VLLM_VERSION="${PINNED_VLLM_VERSION:-}"
 PINNED_VLLM_ARCHIVE_INDEX_URL="${PINNED_VLLM_ARCHIVE_INDEX_URL:-}"
-PINNED_VLLM_FULL_SHA="${PINNED_VLLM_FULL_SHA:-}"
 USE_PINNED_VLLM="${USE_PINNED_VLLM:-true}"
 
 # Override URL if you mirror the pin file elsewhere (e.g. an internal
@@ -62,7 +60,6 @@ except (KeyError, json.JSONDecodeError):
 for name, key in (
     ("PINNED_VLLM_VERSION", "vllm_version"),
     ("PINNED_VLLM_ARCHIVE_INDEX_URL", "archive_index_url"),
-    ("PINNED_VLLM_FULL_SHA", "vllm_source_commit"),
 ):
     print(f"{name}={shlex.quote(record.get(key) or str())}")
 ')"
@@ -71,7 +68,6 @@ fi
 
 export PINNED_VLLM_VERSION
 export PINNED_VLLM_ARCHIVE_INDEX_URL
-export PINNED_VLLM_FULL_SHA
 
 if [[ -n "${PINNED_VLLM_VERSION}" ]]; then
     echo "[resolve-pinned-vllm] Pinned vLLM version: ${PINNED_VLLM_VERSION}" >&2

@@ -29,19 +29,10 @@ print("torch.xpu.is_available() = True")
 PY
 
 cd "${REPO_ROOT}"
+source "${REPO_ROOT}/.buildkite/k3_harness/setup-lmcache-only-env.sh"
 
 log "installing job dependencies"
 uv pip install -r requirements/common.txt -r requirements/test.txt
-
-log "building and installing LMCache XPU extension from checked-out source"
-export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE:-0.0.0+ci}"
-BUILD_WITH_SYCL=1 uv pip install -e . --no-build-isolation
-python - <<'PY'
-import lmcache
-import lmcache.xpu_ops
-
-print("LMCache XPU extension installed from checked-out source")
-PY
 
 discover_xpu_tests() {
   python - <<'PY'
@@ -63,12 +54,7 @@ allowlist = {
   "tests/test_*.py",
   "tests/cli/**/test_*.py",
   "tests/disagg/test_*.py",
-  "tests/v1/mp_coordinator/**/test_*.py",
-  "tests/v1/mp_observability/**/test_*.py",
-  "tests/v1/multiprocess/**/test_*.py",
-  "tests/v1/distributed/**/test_*.py",
-  "tests/v1/test_xpu_connector.py",
-  "tests/v1/test_torch_ops.py",
+  "tests/v1/**/test_*.py",
 }
 selected: set[str] = set()
 
@@ -90,25 +76,12 @@ fi
 log "discovered ${#XPU_TEST_FILES[@]} XPU-related test files"
 printf '  %s\n' "${XPU_TEST_FILES[@]}"
 
-PYTEST_ARGS=(-q --maxfail=1 -m "not cuda")
+PYTEST_ARGS=(-q --maxfail=1 -m "not cuda and not musa and not sglang" --ignore=tests/v1/gpu_connector/)
 if [ -n "${TEST_SELECTOR:-}" ]; then
   PYTEST_ARGS+=(-k "${TEST_SELECTOR}")
 fi
 
 log "running XPU-related tests"
 pytest "${PYTEST_ARGS[@]}" "${XPU_TEST_FILES[@]}"
-
-if [[ "${VERIFY_AND_PIN_XPU:-false}" == "true" ]]; then
-  log "recording verified XPU runtime pin"
-  CI_PLATFORM=buildkite \
-    PIN_BACKEND=xpu \
-    PIN_RUNTIME_ID=linux-intel-xpu \
-    VLLM_IMAGE_TAG="${XPU_IMAGE_TAG:-nightly}" \
-    VLLM_IMAGE_REF="${XPU_IMAGE_REF:?XPU_IMAGE_REF is required}" \
-    VLLM_IMAGE_DIGEST="${XPU_IMAGE_DIGEST:?XPU_IMAGE_DIGEST is required}" \
-    LMCACHE_VERSION="${LMCACHE_XPU_VERSION:-}" \
-    LMCACHE_WHEEL_SHA256="${LMCACHE_XPU_WHEEL_SHA256:-}" \
-    bash .github/scripts/pin-tested-vllm.sh
-fi
 log "xpu smoke test finished successfully"
 
