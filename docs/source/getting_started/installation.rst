@@ -78,7 +78,8 @@ Install LMCache
                                 --entrypoint bash vllm/vllm-openai-rocm:v0.25.0
 
                             VERSION=0.5.3  # replace with target release
-                            pip install lmcache==${VERSION} --no-deps \
+                            # Match the XPU wheel filename, e.g. ${VERSION}+xpu.v0.26.0.<digest12>
+                            pip install lmcache==${VERSION}+xpu.v0.26.0.<digest12> --no-deps \
                                 --find-links https://github.com/LMCache/LMCache/releases/expanded_assets/v${VERSION}-rocm
 
                         .. note::
@@ -103,15 +104,17 @@ Install LMCache
                                 --entrypoint bash vllm/vllm-openai-xpu:<matching-tag>
 
                             VERSION=0.5.3  # replace with target release
-                            pip install lmcache==${VERSION} --no-deps \
+                            # Copy the full local suffix from the XPU wheel filename.
+                            XPU_VERSION="${VERSION}+xpu.v0.26.0.0123456789ab"
+                            pip install "lmcache==${XPU_VERSION}" --no-deps \
                                 --find-links https://github.com/LMCache/LMCache/releases/expanded_assets/v${VERSION}-xpu
 
                         .. note::
 
                             The wheel excludes torch and oneAPI/SYCL runtime libraries, which bind to the
-                            host image at runtime. Each XPU nightly release includes ``xpu-runtime.json``
-                            with the exact vLLM image digest and runtime versions; use that image for
-                            installation. For other bases, use the **From Source** tab.
+                            host image at runtime. Its filename encodes the XPU runtime tag and the first
+                            12 hex characters of the image digest; use the matching image for installation.
+                            For other bases, use the **From Source** tab.
 
             .. tab-item:: Nightly
 

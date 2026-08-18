@@ -136,6 +136,7 @@ jobs:
     uses: ./.github/workflows/build_xpu_artifacts.yml
     with:
       xpu_image: ${{ needs.resolve-xpu-nightly.outputs.image }}
+      xpu_image_tag: nightly
       dev_version: true
     secrets: inherit
 

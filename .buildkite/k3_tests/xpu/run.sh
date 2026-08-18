@@ -33,28 +33,14 @@ cd "${REPO_ROOT}"
 log "installing job dependencies"
 uv pip install -r requirements/common.txt -r requirements/test.txt
 
-if [[ -n "${LMCACHE_XPU_ARTIFACT_URL:-}" ]]; then
-  log "downloading candidate XPU wheel from GitHub Actions"
-  artifact_dir="$(mktemp -d)"
-  trap 'rm -rf "${artifact_dir}"' EXIT
-  curl --fail --location --retry 3 \
-    -H "Authorization: Bearer ${GITHUB_TOKEN:?GITHUB_TOKEN is required}" \
-    "${LMCACHE_XPU_ARTIFACT_URL}" -o "${artifact_dir}/artifact.zip"
-  unzip -q "${artifact_dir}/artifact.zip" -d "${artifact_dir}/contents"
-  wheel="$(find "${artifact_dir}/contents" -name '*.whl' -print -quit)"
-  [[ -n "${wheel}" ]] || fail "GitHub Actions artifact does not contain an XPU wheel"
-  echo "${LMCACHE_XPU_WHEEL_SHA256:?LMCACHE_XPU_WHEEL_SHA256 is required}  ${wheel}" | sha256sum --check -
-  python -m pip install --no-deps "${wheel}"
-else
-  log "building and installing LMCache XPU extension from source"
-  export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE:-0.0.0+ci}"
-  BUILD_WITH_SYCL=1 uv pip install -e . --no-build-isolation
-fi
+log "building and installing LMCache XPU extension from checked-out source"
+export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE:-0.0.0+ci}"
+BUILD_WITH_SYCL=1 uv pip install -e . --no-build-isolation
 python - <<'PY'
 import lmcache
 import lmcache.xpu_ops
 
-print("LMCache XPU extension installed from source")
+print("LMCache XPU extension installed from checked-out source")
 PY
 
 discover_xpu_tests() {

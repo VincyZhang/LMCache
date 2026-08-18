@@ -21,6 +21,10 @@ on:
           description: Immutable vLLM XPU runtime image reference.
           required: true
           type: string
+        xpu_image_tag:
+          description: Human-readable tag for the XPU runtime encoded in the wheel version.
+          required: true
+          type: string
         dev_version:
           description: Build a next-version .devN wheel for nightly publication.
           required: false
@@ -83,52 +87,33 @@ jobs:
               id: xpu-version
               env:
                 DEV_VERSION: ${{ inputs.dev_version }}
+                XPU_IMAGE: ${{ inputs.xpu_image }}
+                XPU_IMAGE_TAG: ${{ inputs.xpu_image_tag }}
               run: |
+                set -Eeuo pipefail
                 LATEST_TAG=$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
                 if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
                   BASE="${GITHUB_REF_NAME#v}"
                 elif [[ "${DEV_VERSION}" == "true" && -n "${LATEST_TAG}" ]]; then
                   COMMITS=$(git rev-list --count "${LATEST_TAG}..HEAD")
                   IFS=. read -r MAJOR MINOR PATCH <<< "${LATEST_TAG#v}"
-                  BASE="${MAJOR}.${MINOR}.$((PATCH + 1)).dev${COMMITS}+xpu"
+                  BASE="${MAJOR}.${MINOR}.$((PATCH + 1)).dev${COMMITS}"
                 else
                   BASE="${LATEST_TAG#v}"
                   BASE="${BASE:-0.0.0.dev}"
                 fi
-                echo "XPU_VERSION=${BASE}" >> "$GITHUB_ENV"
-                echo "xpu_version=${BASE}" >> "$GITHUB_OUTPUT"
-
-            - name: Record XPU runtime metadata
-              env:
-                XPU_IMAGE: ${{ inputs.xpu_image }}
-              run: |
-                mkdir -p dist
-                docker run --rm \
-                  -v "${PWD}:/work/LMCache" \
-                  --entrypoint bash "${XPU_IMAGE}" -lc '
-                  python3 - <<"PY" > /work/LMCache/dist/xpu-runtime.json
-                  import json
-                  import platform
-                  import torch
-                  import vllm
-
-                  print(json.dumps({
-                      "python": platform.python_version(),
-                      "torch": torch.__version__,
-                      "vllm": getattr(vllm, "__version__", "unknown"),
-                  }, indent=2, sort_keys=True))
-                  PY
-                '
-                python3 - <<'PY'
-                import json
-                from pathlib import Path
-
-                metadata_path = Path("dist/xpu-runtime.json")
-                metadata = json.loads(metadata_path.read_text())
-                metadata["image"] = "${{ inputs.xpu_image }}"
-                metadata["lmcache_version"] = "${{ steps.xpu-version.outputs.xpu_version }}"
-                metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
-                PY
+                if [[ "${XPU_IMAGE}" == *@sha256:* ]]; then
+                  DIGEST="${XPU_IMAGE##*@}"
+                else
+                  DIGEST="$(docker buildx imagetools inspect "${XPU_IMAGE}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+                fi
+                [[ "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+                DIGEST_SHORT="${DIGEST#sha256:}"
+                TAG="$(printf '%s' "${XPU_IMAGE_TAG}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9.]+/./g; s/^\.+|\.+$//g')"
+                [[ -n "${TAG}" ]]
+                XPU_VERSION="${BASE}+xpu.${TAG}.${DIGEST_SHORT:0:12}"
+                echo "XPU_VERSION=${XPU_VERSION}" >> "$GITHUB_ENV"
+                echo "xpu_version=${XPU_VERSION}" >> "$GITHUB_OUTPUT"
 
             # Build inside oneAPI image. No GPU required for compiling the
             # extension itself.
@@ -165,9 +150,7 @@ jobs:
               uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
               with:
                 name: release-xpu-artifacts
-                path: |
-                  dist/*.whl
-                  dist/xpu-runtime.json
+                path: dist/*.whl
 
 # On-device validation requires Intel GPU hardware and is not available on
 # GitHub-hosted runners. Run manual validation by installing this wheel in an
