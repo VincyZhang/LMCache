@@ -141,7 +141,7 @@ jobs:
 
   publish-nightly-xpu:
     name: Publish XPU nightly wheel
-    needs: [resolve-xpu-nightly, nightly-xpu-wheel]
+    needs: [resolve-xpu-nightly, nightly-xpu-wheel, validate-nightly-xpu]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -180,6 +180,42 @@ jobs:
           \`\`\`" \
             --prerelease \
             dist/xpu/*
+
+  validate-nightly-xpu:
+    name: Validate XPU wheel on Intel hardware
+    needs: [resolve-xpu-nightly, nightly-xpu-wheel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 250
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Prepare Buildkite candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          artifact_id="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" --jq '.artifacts[] | select(.name == "release-xpu-artifacts") | .id' | head -n1)"
+          test -n "${artifact_id}"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > artifact.zip
+          wheel="$(unzip -Z1 artifact.zip | grep '\.whl$' | head -n1)"
+          test -n "${wheel}"
+          wheel_sha256="$(unzip -p artifact.zip "${wheel}" | sha256sum | awk '{print $1}')"
+          echo "artifact_url=${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" >> "${GITHUB_OUTPUT}"
+          echo "wheel_sha256=${wheel_sha256}" >> "${GITHUB_OUTPUT}"
+      - name: Trigger and await Buildkite XPU validation
+        env:
+          BUILDKITE_API_TOKEN: ${{ secrets.BUILDKITE_API_TOKEN }}
+          BUILDKITE_ORGANIZATION: ${{ vars.BUILDKITE_ORGANIZATION }}
+          BUILDKITE_XPU_PIPELINE: ${{ vars.BUILDKITE_XPU_PIPELINE }}
+          XPU_IMAGE_REF: ${{ needs.resolve-xpu-nightly.outputs.image }}
+          XPU_IMAGE_TAG: nightly
+          XPU_IMAGE_DIGEST: ${{ needs.resolve-xpu-nightly.outputs.digest }}
+          LMCACHE_XPU_ARTIFACT_URL: ${{ steps.candidate.outputs.artifact_url }}
+          LMCACHE_XPU_VERSION: ${{ needs.nightly-xpu-wheel.outputs.xpu_version }}
+          LMCACHE_XPU_WHEEL_SHA256: ${{ steps.candidate.outputs.wheel_sha256 }}
+        run: bash .github/scripts/trigger-buildkite-xpu.sh
 
   nightly-build:
     name: Build image

@@ -33,9 +33,23 @@ cd "${REPO_ROOT}"
 log "installing job dependencies"
 uv pip install -r requirements/common.txt -r requirements/test.txt
 
-log "building and installing LMCache XPU extension from source"
-export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE:-0.0.0+ci}"
-BUILD_WITH_SYCL=1 uv pip install -e . --no-build-isolation
+if [[ -n "${LMCACHE_XPU_ARTIFACT_URL:-}" ]]; then
+  log "downloading candidate XPU wheel from GitHub Actions"
+  artifact_dir="$(mktemp -d)"
+  trap 'rm -rf "${artifact_dir}"' EXIT
+  curl --fail --location --retry 3 \
+    -H "Authorization: Bearer ${GITHUB_TOKEN:?GITHUB_TOKEN is required}" \
+    "${LMCACHE_XPU_ARTIFACT_URL}" -o "${artifact_dir}/artifact.zip"
+  unzip -q "${artifact_dir}/artifact.zip" -d "${artifact_dir}/contents"
+  wheel="$(find "${artifact_dir}/contents" -name '*.whl' -print -quit)"
+  [[ -n "${wheel}" ]] || fail "GitHub Actions artifact does not contain an XPU wheel"
+  echo "${LMCACHE_XPU_WHEEL_SHA256:?LMCACHE_XPU_WHEEL_SHA256 is required}  ${wheel}" | sha256sum --check -
+  python -m pip install --no-deps "${wheel}"
+else
+  log "building and installing LMCache XPU extension from source"
+  export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE:-0.0.0+ci}"
+  BUILD_WITH_SYCL=1 uv pip install -e . --no-build-isolation
+fi
 python - <<'PY'
 import lmcache
 import lmcache.xpu_ops
@@ -97,5 +111,18 @@ fi
 
 log "running XPU-related tests"
 pytest "${PYTEST_ARGS[@]}" "${XPU_TEST_FILES[@]}"
+
+if [[ "${VERIFY_AND_PIN_XPU:-false}" == "true" ]]; then
+  log "recording verified XPU runtime pin"
+  CI_PLATFORM=buildkite \
+    PIN_BACKEND=xpu \
+    PIN_RUNTIME_ID=linux-intel-xpu \
+    VLLM_IMAGE_TAG="${XPU_IMAGE_TAG:-nightly}" \
+    VLLM_IMAGE_REF="${XPU_IMAGE_REF:?XPU_IMAGE_REF is required}" \
+    VLLM_IMAGE_DIGEST="${XPU_IMAGE_DIGEST:?XPU_IMAGE_DIGEST is required}" \
+    LMCACHE_VERSION="${LMCACHE_XPU_VERSION:-}" \
+    LMCACHE_WHEEL_SHA256="${LMCACHE_XPU_WHEEL_SHA256:-}" \
+    bash .github/scripts/pin-tested-vllm.sh
+fi
 log "xpu smoke test finished successfully"
 

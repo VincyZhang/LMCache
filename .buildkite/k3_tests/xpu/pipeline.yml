@@ -12,13 +12,19 @@ steps:
             # Device tests exercise the current vLLM XPU nightly runtime.
             containers:
               - name: container-0
-                image: vllm/vllm-openai-xpu:nightly
+                image: "${XPU_IMAGE_REF}"
                 imagePullPolicy: IfNotPresent
                 resources:
                   requests:
                     deviceclass.resource.kubernetes.io/gpu.intel.com: "1"
                   limits:
                     deviceclass.resource.kubernetes.io/gpu.intel.com: "1"
+                  env:
+                    - name: GITHUB_TOKEN
+                      valueFrom:
+                        secretKeyRef:
+                          name: buildkite-git-creds
+                          key: GITHUB_TOKEN
                 volumeMounts:
                   - { name: hf-cache, mountPath: /root/.cache/huggingface }
             volumes:

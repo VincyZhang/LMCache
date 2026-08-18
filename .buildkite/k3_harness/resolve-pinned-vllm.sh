@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Resolve the vLLM nightly version that this build should install.
+# Resolve the verified CUDA vLLM nightly version that this build should install.
 #
 # Resolution order (first non-empty wins):
 #   1. PINNED_VLLM_VERSION env var  -- explicit per-build override.
-#   2. latest_tested_vllm.txt fetched from
-#      https://raw.githubusercontent.com/LMCache/LMCache/buildkite_latest_tested_vllm/latest_tested_vllm.txt
-#      -- the most recent vLLM nightly that the canary build verified.
+#   2. verified_runtimes.json fetched from the tracking branch -- the most
+#      recent CUDA runtime that the canary build verified.
 #   3. Empty string -- caller falls back to "latest nightly".
 #
 # The pin file's first non-blank, non-comment line is the bare version
@@ -44,40 +43,29 @@ USE_PINNED_VLLM="${USE_PINNED_VLLM:-true}"
 
 # Override URL if you mirror the pin file elsewhere (e.g. an internal
 # raw-file proxy for offline CI).
-LMCACHE_VLLM_PIN_URL="${LMCACHE_VLLM_PIN_URL:-https://raw.githubusercontent.com/LMCache/LMCache/buildkite_latest_tested_vllm/latest_tested_vllm.txt}"
+LMCACHE_VLLM_PIN_URL="${LMCACHE_VLLM_PIN_URL:-https://raw.githubusercontent.com/LMCache/LMCache/buildkite_latest_tested_vllm/verified_runtimes.json}"
 
 if [[ -z "${PINNED_VLLM_VERSION}" && "${USE_PINNED_VLLM}" == "true" ]]; then
     if command -v curl >/dev/null 2>&1; then
         # 5s connect, 10s total -- pin lookup must never dominate setup time.
         fetched="$(curl -fsSL --connect-timeout 5 --max-time 10 \
             "${LMCACHE_VLLM_PIN_URL}" 2>/dev/null || true)"
-        # The pin file's first non-blank, non-comment line is the bare
-        # version (back-compat for older readers); subsequent key=value
-        # lines carry resolved metadata so consumers can skip the live
-        # GitHub API lookup. A single awk pass extracts everything.
-        # Empty / missing keys are tolerated -- we'll just fall back to
-        # resolving them on demand later in the pipeline.
-        eval "$(printf '%s\n' "${fetched}" | awk '
-            BEGIN { ver=""; idx=""; sha="" }
-            /^[[:space:]]*(#|$)/ { next }
-            ver == "" {
-                line=$0
-                sub(/[[:space:]]+$/, "", line)
-                ver=line
-                next
-            }
-            /^archive_index_url=/ {
-                v=$0; sub(/^archive_index_url=/, "", v); idx=v; next
-            }
-            /^full_sha=/ {
-                v=$0; sub(/^full_sha=/, "", v); sha=v; next
-            }
-            END {
-                printf("PINNED_VLLM_VERSION=%s\n", ver)
-                printf("PINNED_VLLM_ARCHIVE_INDEX_URL=%s\n", idx)
-                printf("PINNED_VLLM_FULL_SHA=%s\n", sha)
-            }
-        ')"
+        eval "$(printf '%s' "${fetched}" | python3 -c '
+import json
+import shlex
+import sys
+
+try:
+    record = json.load(sys.stdin)["runtimes"]["cuda"]["cu130"]
+except (KeyError, json.JSONDecodeError):
+    record = {}
+for name, key in (
+    ("PINNED_VLLM_VERSION", "vllm_version"),
+    ("PINNED_VLLM_ARCHIVE_INDEX_URL", "archive_index_url"),
+    ("PINNED_VLLM_FULL_SHA", "vllm_source_commit"),
+):
+    print(f"{name}={shlex.quote(record.get(key) or str())}")
+')"
     fi
 fi
 

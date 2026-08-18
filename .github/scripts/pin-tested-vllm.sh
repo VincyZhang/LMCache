@@ -1,3 +1,206 @@
+# Pin a verified vLLM runtime to a dedicated CI tracking branch.
+#
+# The state is one verified_runtimes.json document keyed by backend and runtime
+# identifier. CPU/CUDA pins identify a vLLM wheel/source commit; XPU pins
+# identify the verified upstream runtime image. Failed validation never changes
+# the current pin.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "${REPO_ROOT}"
+
+export GIT_TERMINAL_PROMPT=0
+
+CI_PLATFORM="${CI_PLATFORM:-buildkite}"
+case "${CI_PLATFORM}" in
+    buildkite)
+        PIN_VLLM_BRANCH="${PIN_VLLM_BRANCH:-buildkite_latest_tested_vllm}"
+        ;;
+    github_actions)
+        PIN_VLLM_BRANCH="${PIN_VLLM_BRANCH:-github_nightly_tested_vllm}"
+        ;;
+    *)
+        echo "[ERROR] unknown CI_PLATFORM '${CI_PLATFORM}'" >&2
+        exit 1
+    ;;
+esac
+
+PIN_BACKEND="${PIN_BACKEND:-cuda}"
+case "${PIN_BACKEND}" in
+    cpu|cuda|xpu) ;;
+    *)
+    echo "[ERROR] unknown PIN_BACKEND '${PIN_BACKEND}'" >&2
+    exit 1
+    ;;
+esac
+
+PIN_VLLM_STATUS="${PIN_VLLM_STATUS:-tested}"
+PIN_VLLM_REASON="${PIN_VLLM_REASON:-}"
+OS_PLATFORM="${OS_PLATFORM:-}"
+PIN_RUNTIME_ID="${PIN_RUNTIME_ID:-}"
+if [[ -z "${PIN_RUNTIME_ID}" ]]; then
+    case "${PIN_BACKEND}" in
+        cpu) PIN_RUNTIME_ID="${OS_PLATFORM:-linux}" ;;
+        cuda) PIN_RUNTIME_ID="${CUDA_VARIANT:-cu130}" ;;
+        xpu) PIN_RUNTIME_ID="${OS_PLATFORM:-linux-intel-xpu}" ;;
+    esac
+fi
+
+VLLM_VERSION="${VLLM_VERSION:-}"
+if [[ -z "${VLLM_VERSION}" && "${PIN_BACKEND}" != "xpu" ]]; then
+    VLLM_VERSION="$(python -c 'import vllm; print(vllm.__version__)' 2>/dev/null || true)"
+fi
+if [[ -z "${VLLM_VERSION}" ]]; then
+    if [[ "${PIN_VLLM_STATUS}" == "tested" && "${PIN_BACKEND}" != "xpu" ]]; then
+        echo "[ERROR] could not read vllm.__version__ from the live environment" >&2
+        exit 1
+    fi
+    VLLM_VERSION="unknown"
+fi
+
+VLLM_SOURCE_COMMIT="${VLLM_SOURCE_COMMIT:-}"
+VLLM_SHORT_SHA="${VLLM_VERSION##*+g}"
+if [[ "${VLLM_SHORT_SHA}" == "${VLLM_VERSION}" || ! "${VLLM_SHORT_SHA}" =~ ^[0-9a-f]+$ ]]; then
+    VLLM_SHORT_SHA=""
+fi
+
+if [[ -z "${VLLM_SOURCE_COMMIT}" && -n "${VLLM_SHORT_SHA}" ]]; then
+    gh_auth_args=()
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        gh_auth_args=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+    fi
+    VLLM_SOURCE_COMMIT="$(curl -fsSL --connect-timeout 5 --max-time 10 \
+        -H "Accept: application/vnd.github+json" \
+    "${gh_auth_args[@]+"${gh_auth_args[@]}"}" \
+    "https://api.github.com/repos/vllm-project/vllm/commits/${VLLM_SHORT_SHA}" \
+    2>/dev/null | jq -r '.sha // empty' || true)"
+fi
+
+VLLM_ARCHIVE_INDEX="${VLLM_ARCHIVE_INDEX:-}"
+if [[ "${PIN_BACKEND}" == "cuda" && -z "${VLLM_ARCHIVE_INDEX}" && -n "${VLLM_SOURCE_COMMIT}" ]]; then
+    VLLM_ARCHIVE_INDEX="https://wheels.vllm.ai/${VLLM_SOURCE_COMMIT}/${PIN_RUNTIME_ID}"
+fi
+
+VLLM_IMAGE_TAG="${VLLM_IMAGE_TAG:-}"
+VLLM_IMAGE_REF="${VLLM_IMAGE_REF:-}"
+VLLM_IMAGE_DIGEST="${VLLM_IMAGE_DIGEST:-}"
+LMCACHE_VERSION="${LMCACHE_VERSION:-}"
+LMCACHE_WHEEL_SHA256="${LMCACHE_WHEEL_SHA256:-}"
+
+if [[ "${PIN_BACKEND}" == "xpu" && "${PIN_VLLM_STATUS}" == "tested" ]]; then
+    if [[ -z "${VLLM_IMAGE_REF}" || -z "${VLLM_IMAGE_DIGEST}" ]]; then
+        echo "[ERROR] XPU pins require VLLM_IMAGE_REF and VLLM_IMAGE_DIGEST" >&2
+        exit 1
+    fi
+fi
+
+case "${CI_PLATFORM}" in
+    buildkite)
+        BUILD_URL="${BUILD_URL:-${BUILDKITE_BUILD_URL:-}}"
+        BUILD_NUMBER="${BUILD_NUMBER:-${BUILDKITE_BUILD_NUMBER:-}}"
+        COMMIT_SHA="${COMMIT_SHA:-${BUILDKITE_COMMIT:-}}"
+        ;;
+    github_actions)
+    BUILD_NUMBER="${BUILD_NUMBER:-${GITHUB_RUN_ID:-}}"
+    BUILD_URL="${BUILD_URL:-${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}}"
+    COMMIT_SHA="${COMMIT_SHA:-${GITHUB_SHA:-}}"
+    ;;
+esac
+
+if [[ "${PIN_VLLM_STATUS}" != "tested" ]]; then
+    echo "[pin-tested-vllm] ${PIN_BACKEND}/${PIN_RUNTIME_ID} failed: ${PIN_VLLM_REASON}" >&2
+    exit 0
+fi
+WORK_DIR="/tmp/pin_vllm_$$"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+PIN_VLLM_DRY_RUN="${PIN_VLLM_DRY_RUN:-0}"
+
+if [[ "${PIN_VLLM_DRY_RUN}" == "1" ]]; then
+    mkdir -p "${WORK_DIR}"
+else
+    CI_REPO="LMCache/LMCache"
+    if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+        echo "[ERROR] GITHUB_TOKEN is required to update the pin state" >&2
+        exit 1
+    fi
+    CI_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${CI_REPO}.git"
+fi
+
+if [[ "${PIN_VLLM_DRY_RUN}" != "1" ]]; then
+    if ! git clone --depth=1 --branch "${PIN_VLLM_BRANCH}" \
+        "${CI_REPO_URL}" "${WORK_DIR}" 2>/dev/null; then
+        mkdir -p "${WORK_DIR}"
+        git -C "${WORK_DIR}" init -q
+        git -C "${WORK_DIR}" remote add origin "${CI_REPO_URL}"
+        git -C "${WORK_DIR}" checkout --orphan "${PIN_VLLM_BRANCH}"
+        git -C "${WORK_DIR}" rm -rf --cached . >/dev/null 2>&1 || true
+        find "${WORK_DIR}" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+    fi
+fi
+STATE_FILE="${WORK_DIR}/verified_runtimes.json"
+TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+PIN_BACKEND="${PIN_BACKEND}" \
+PIN_RUNTIME_ID="${PIN_RUNTIME_ID}" \
+CI_PLATFORM="${CI_PLATFORM}" \
+TIMESTAMP="${TIMESTAMP}" \
+VLLM_VERSION="${VLLM_VERSION}" \
+VLLM_SOURCE_COMMIT="${VLLM_SOURCE_COMMIT}" \
+VLLM_ARCHIVE_INDEX="${VLLM_ARCHIVE_INDEX}" \
+VLLM_IMAGE_TAG="${VLLM_IMAGE_TAG}" \
+VLLM_IMAGE_REF="${VLLM_IMAGE_REF}" \
+VLLM_IMAGE_DIGEST="${VLLM_IMAGE_DIGEST}" \
+LMCACHE_VERSION="${LMCACHE_VERSION}" \
+LMCACHE_WHEEL_SHA256="${LMCACHE_WHEEL_SHA256}" \
+BUILD_NUMBER="${BUILD_NUMBER:-}" \
+BUILD_URL="${BUILD_URL:-}" \
+COMMIT_SHA="${COMMIT_SHA:-}" \
+python3 - "${STATE_FILE}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    state = json.loads(path.read_text())
+except FileNotFoundError:
+    state = {"schema_version": 1, "runtimes": {}}
+
+backend = os.environ["PIN_BACKEND"]
+runtime_id = os.environ["PIN_RUNTIME_ID"]
+record = {
+    "backend": backend,
+    "runtime_id": runtime_id,
+    "validated_at": os.environ["TIMESTAMP"],
+    "validator": os.environ["CI_PLATFORM"],
+    "vllm_version": os.environ["VLLM_VERSION"],
+    "vllm_source_commit": os.environ["VLLM_SOURCE_COMMIT"],
+    "archive_index_url": os.environ["VLLM_ARCHIVE_INDEX"],
+    "image_tag": os.environ["VLLM_IMAGE_TAG"],
+    "image_ref": os.environ["VLLM_IMAGE_REF"],
+    "image_digest": os.environ["VLLM_IMAGE_DIGEST"],
+    "lmcache_version": os.environ["LMCACHE_VERSION"],
+    "lmcache_wheel_sha256": os.environ["LMCACHE_WHEEL_SHA256"],
+    "build_number": os.environ["BUILD_NUMBER"],
+    "build_url": os.environ["BUILD_URL"],
+    "commit": os.environ["COMMIT_SHA"],
+}
+state.setdefault("schema_version", 1)
+state.setdefault("runtimes", {}).setdefault(backend, {})[runtime_id] = record
+path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+PY
+
+if [[ "${PIN_VLLM_DRY_RUN}" == "1" ]]; then
+    cat "${STATE_FILE}"
+    exit 0
+fi
+
+git -C "${WORK_DIR}" add verified_runtimes.json
+git -C "${WORK_DIR}" -c user.email="ci@lmcache.ai" -c user.name="LMCache CI" \
+    commit -m "Pin ${PIN_BACKEND} runtime: ${PIN_RUNTIME_ID}"
+git -C "${WORK_DIR}" push origin "HEAD:${PIN_VLLM_BRANCH}"
+echo "[pin-tested-vllm] pinned ${PIN_BACKEND}/${PIN_RUNTIME_ID}" >&2
 #!/usr/bin/env bash
 # Pin the currently-installed vLLM nightly to a dedicated tracking branch.
 #
