@@ -14,7 +14,7 @@ vllm_port="${VLLM_PORT:-8000}"
 vllm_baseline_port="${VLLM_BASELINE_PORT:-9000}"
 CPU_BUFFER_SIZE="${CPU_BUFFER_SIZE:-80}"
 MAX_WORKERS="${MAX_WORKERS:-4}"
-MODEL="${MODEL:-Qwen/Qwen3-14B}"
+MODEL="${MODEL:-Qwen/Qwen3-0.6B}"
 BUILD_ID="${BUILD_ID:-local_$$}"
 TORCH_DEVICE_TYPE="${TORCH_DEVICE_TYPE:-cuda}"
 

@@ -24,6 +24,12 @@ export VLLM_BASELINE_PORT="${VLLM_BASELINE_PORT:-9000}"
 export MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-300}"
 export BUILD_ID="${BUILDKITE_BUILD_ID:-local_$$}"
 
+if [ "$TORCH_DEVICE_TYPE" = "xpu" ]; then
+    DEFAULT_MODEL="Qwen/Qwen3-0.6B"
+else
+    DEFAULT_MODEL="Qwen/Qwen3-14B"
+fi
+
 # gds_smoke_test enables the GDS L1 NVMe-slab tier
 GDS_SCRATCH="${GDS_SCRATCH:-/scratch}"
 if [ "$TEST_NAME" = "gds_smoke_test" ]; then
@@ -79,9 +85,9 @@ elif [ "$TEST_NAME" = "lazy_offload" ]; then
     # vLLM's default paged-block size is 16 tokens. Matching it keeps this
     # test's expected LMCache chunk counts exact and small.
     export CHUNK_SIZE="${CHUNK_SIZE:-16}"
-    export MODEL="${MODEL:-Qwen/Qwen3-14B}"
+    export MODEL="${MODEL:-$DEFAULT_MODEL}"
 else
-    export MODEL="${MODEL:-Qwen/Qwen3-14B}"
+    export MODEL="${MODEL:-$DEFAULT_MODEL}"
 fi
 export CPU_BUFFER_SIZE="${CPU_BUFFER_SIZE:-80}"
 export MAX_WORKERS="${MAX_WORKERS:-4}"
