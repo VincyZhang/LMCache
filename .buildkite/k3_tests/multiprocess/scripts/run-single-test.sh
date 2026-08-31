@@ -117,8 +117,13 @@ SELF_CONTAINED_TESTS=" deadlock p2p kimi_linear_tp dsv4_flash_tp "
 # Tests that compare against a baseline vLLM (no LMCache) on a second GPU.
 # Only these need the baseline server (and thus a 2-GPU pod); everything
 # else runs on GPU 0 alone, so launch-processes.sh skips the baseline.
+# Respect an explicit environment override (for example, the XPU wrapper sets
+# LAUNCH_BASELINE=false to keep the lane single-instance) before applying the
+# default baseline heuristic below.
 BASELINE_TESTS=" vllm_bench long_doc_qa long_doc_qa_l2 "
-if [[ "$BASELINE_TESTS" == *" $TEST_NAME "* ]]; then
+if [ -n "${LAUNCH_BASELINE:-}" ]; then
+    export LAUNCH_BASELINE
+elif [[ "$BASELINE_TESTS" == *" $TEST_NAME "* ]]; then
     export LAUNCH_BASELINE=true
 else
     export LAUNCH_BASELINE=false
