@@ -28,7 +28,7 @@ x-pod-1xpu: &pod-1xpu
 steps:
   - group: ":xpu: Multiprocess (1-pod)"
     steps:
-      - label: ":xpu: lm_eval_engine_driven"
+      - label: ":xpu: lm_eval"
         command: |
           export LMCACHE_MP_TRANSFER_MODE="engine_driven"
           export L1_USE_LAZY="false"
@@ -42,30 +42,14 @@ steps:
         plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
         artifact_paths: ["*.log"]
 
-      - label: ":xpu: cache_stats"
-        command: .buildkite/k3_tests/xpu/multiprocess/run.sh cache_stats
-        timeout_in_minutes: 45
-        agents: { queue: "xpu" }
-        plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
-        artifact_paths: ["*.log"]
-
-      - label: ":xpu: http_api"
-        command: .buildkite/k3_tests/xpu/multiprocess/run.sh http_api
-        timeout_in_minutes: 45
-        agents: { queue: "xpu" }
-        plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
-        artifact_paths: ["*.log"]
-
-      - label: ":xpu: fault_tolerance"
-        command: .buildkite/k3_tests/xpu/multiprocess/run.sh fault_tolerance
-        timeout_in_minutes: 45
-        retry: *flaky-retry
-        agents: { queue: "xpu" }
-        plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
-        artifact_paths: ["*.log"]
-
-      - label: ":xpu: restart_recovery"
-        command: .buildkite/k3_tests/xpu/multiprocess/run.sh restart_recovery
+      - label: ":xpu: vllm_bench"
+        command: |
+          export LMCACHE_MP_TRANSFER_MODE="engine_driven"
+          export L1_USE_LAZY="false"
+          export ENFORCE_EAGER="1"
+          export VLLM_USE_STANDALONE_COMPILE="0"
+          export CPU_BUFFER_SIZE="4"
+          .buildkite/k3_tests/xpu/multiprocess/run.sh vllm_bench
         timeout_in_minutes: 45
         retry: *flaky-retry
         agents: { queue: "xpu" }

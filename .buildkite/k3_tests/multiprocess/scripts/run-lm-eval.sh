@@ -27,9 +27,6 @@ BUILD_ID="${BUILD_ID:-local_$$}"
 RESULTS_DIR="${RESULTS_DIR:-/tmp/lmcache_ci_results_${BUILD_ID}}"
 if [ -n "${LM_EVAL_VERIFY_MODE:-}" ]; then
     LM_EVAL_VERIFY_MODE="${LM_EVAL_VERIFY_MODE}"
-elif [ "${TORCH_DEVICE_TYPE:-cuda}" = "xpu" ]; then
-    # XPU path is not guaranteed to be bitwise-stable across full generations.
-    LM_EVAL_VERIFY_MODE="score"
 else
     LM_EVAL_VERIFY_MODE="samples"
 fi
