@@ -1,5 +1,6 @@
-# XPU multiprocess tests (single pod / 1 Intel GPU per step).
-# This suite reuses the multiprocess scripts through an XPU wrapper.
+# XPU multiprocess tests.
+# This suite reuses the multiprocess scripts through an XPU wrapper and may
+# allocate 1 or 2 Intel GPUs depending on the test step.
 
 x-flaky-retry: &flaky-retry
   automatic:
@@ -18,6 +19,23 @@ x-pod-1xpu: &pod-1xpu
           deviceclass.resource.kubernetes.io/gpu.intel.com: "1"
         limits:
           deviceclass.resource.kubernetes.io/gpu.intel.com: "1"
+      volumeMounts:
+        - { name: hf-cache, mountPath: /root/.cache/huggingface }
+        - { name: dshm, mountPath: /dev/shm }
+  volumes:
+    - { name: hf-cache, hostPath: { path: /data/huggingface, type: DirectoryOrCreate } }
+    - { name: dshm, emptyDir: { medium: Memory, sizeLimit: 16Gi } }
+
+x-pod-2xpu: &pod-2xpu
+  containers:
+    - name: container-0
+      image: public.ecr.aws/q9t5s3a7/vllm-ci-test-repo:ee0da84ab9e04ac7610e28580af62c365e898389-xpu
+      imagePullPolicy: IfNotPresent
+      resources:
+        requests:
+          deviceclass.resource.kubernetes.io/gpu.intel.com: "2"
+        limits:
+          deviceclass.resource.kubernetes.io/gpu.intel.com: "2"
       volumeMounts:
         - { name: hf-cache, mountPath: /root/.cache/huggingface }
         - { name: dshm, mountPath: /dev/shm }
@@ -53,5 +71,5 @@ steps:
         timeout_in_minutes: 45
         retry: *flaky-retry
         agents: { queue: "xpu" }
-        plugins: [{ kubernetes: { podSpec: *pod-1xpu } }]
+        plugins: [{ kubernetes: { podSpec: *pod-2xpu } }]
         artifact_paths: ["*.log"]
