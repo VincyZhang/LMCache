@@ -31,7 +31,14 @@ source "${REPO_ROOT}/.buildkite/k3_tests/common_scripts/helpers.sh"
 # Configuration
 VLLM_PORT="${VLLM_PORT:-8000}"
 MODEL="${MODEL:-google/gemma-4-31B-it}"
-NUM_CONCURRENT="${NUM_CONCURRENT:-50}"
+# XPU is more sensitive to high in-flight request counts in this harness.
+if [ -n "${NUM_CONCURRENT:-}" ]; then
+    NUM_CONCURRENT="${NUM_CONCURRENT}"
+elif [ "${TORCH_DEVICE_TYPE:-cuda}" = "xpu" ]; then
+    NUM_CONCURRENT="8"
+else
+    NUM_CONCURRENT="50"
+fi
 # 31B has a large per-token KV footprint; cap the sample count so the working
 # set fits the CPU pool (a too-large set thrashes and the retrieve run misses).
 LIMIT="${LIMIT:-100}"

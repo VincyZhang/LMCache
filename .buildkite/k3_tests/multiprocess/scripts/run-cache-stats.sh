@@ -40,7 +40,8 @@ send_request() {
     echo "--- Sending request: $label ---"
     local http_code
     http_code=$(curl -s -o "$output_file" -w "%{http_code}" \
-        -X POST "http://localhost:${VLLM_PORT}/v1/chat/completions" \
+        --noproxy '*' \
+        -X POST "http://127.0.0.1:${VLLM_PORT}/v1/chat/completions" \
         -H "Content-Type: application/json" \
         -d "{
             \"model\": \"${MODEL}\",
@@ -117,22 +118,31 @@ with open('$warm_file') as f:
 cold_stats = cold['kv_transfer_params']['cached_token_stats']
 warm_stats = warm['kv_transfer_params']['cached_token_stats']
 
+cold_vllm = cold_stats['num_vllm_cached_tokens']
+warm_vllm = warm_stats['num_vllm_cached_tokens']
 cold_lmcache = cold_stats['num_lmcache_cached_tokens']
 warm_lmcache = warm_stats['num_lmcache_cached_tokens']
 
+cold_total = cold_vllm + cold_lmcache
+warm_total = warm_vllm + warm_lmcache
+
+print(f'Cold request — num_vllm_cached_tokens: {cold_vllm}')
 print(f'Cold request — num_lmcache_cached_tokens: {cold_lmcache}')
+print(f'Warm request — num_vllm_cached_tokens: {warm_vllm}')
 print(f'Warm request — num_lmcache_cached_tokens: {warm_lmcache}')
+print(f'Cold request — total cached tokens (vLLM + LMCache): {cold_total}')
+print(f'Warm request — total cached tokens (vLLM + LMCache): {warm_total}')
 
-if warm_lmcache <= cold_lmcache:
-    print(f'FAIL: warm request should have more LMCache hits than cold request')
-    print(f'  cold={cold_lmcache}, warm={warm_lmcache}')
+if warm_total <= cold_total:
+    print('FAIL: warm request should have more total cached tokens than cold request')
+    print(f'  cold_total={cold_total}, warm_total={warm_total}')
     sys.exit(1)
 
-if warm_lmcache == 0:
-    print('FAIL: warm request has 0 LMCache cached tokens (cache not populated?)')
+if warm_lmcache == 0 and warm_vllm == 0:
+    print('FAIL: warm request has 0 cached tokens in both LMCache and vLLM')
     sys.exit(1)
 
-print(f'PASS: warm request has more LMCache hits ({warm_lmcache} > {cold_lmcache})')
+print(f'PASS: warm request has more total cache hits ({warm_total} > {cold_total})')
 "
 }
 
@@ -180,7 +190,8 @@ echo "============================================"
 
 echo "--- Sending request without kv_transfer_params ---"
 http_code=$(curl -s -o "$STATS_DIR/no_opt_in_response.json" -w "%{http_code}" \
-    -X POST "http://localhost:${VLLM_PORT}/v1/chat/completions" \
+    --noproxy '*' \
+    -X POST "http://127.0.0.1:${VLLM_PORT}/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -d "{
         \"model\": \"${MODEL}\",

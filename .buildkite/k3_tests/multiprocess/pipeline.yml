@@ -162,7 +162,9 @@ steps:
             engine_driven)
               export LMCACHE_MP_TRANSFER_MODE="engine_driven"
               export L1_USE_LAZY="false"
-              export CPU_BUFFER_SIZE="80"
+              export ENFORCE_EAGER="1"
+              export VLLM_USE_STANDALONE_COMPILE="0"
+              export CPU_BUFFER_SIZE="4"
               ;;
           esac
           .buildkite/k3_tests/multiprocess/run.sh lm_eval

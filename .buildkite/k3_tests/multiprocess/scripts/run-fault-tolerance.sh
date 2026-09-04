@@ -20,6 +20,24 @@ MODEL="${MODEL:-Qwen/Qwen3-14B}"
 BUILD_ID="${BUILD_ID:-local_$$}"
 RESULTS_DIR="${RESULTS_DIR:-/tmp/lmcache_ci_results_${BUILD_ID}}"
 LMCACHE_PORT="${LMCACHE_PORT:-6555}"
+TORCH_DEVICE_TYPE="${TORCH_DEVICE_TYPE:-cuda}"
+ATTENTION_BACKEND="FLASH_ATTN"
+# Pick the device affinity env var once, then reuse it for all launched processes.
+DEVICE_AFFINITY_VAR="CUDA_VISIBLE_DEVICES"
+VLLM_DEVICE_ENV=(VLLM_TARGET_DEVICE="cuda")
+if [ "${TORCH_DEVICE_TYPE}" = "xpu" ]; then
+    DEVICE_AFFINITY_VAR="ZE_AFFINITY_MASK"
+    ATTENTION_BACKEND="auto"
+    VLLM_DEVICE_ENV=(VLLM_TARGET_DEVICE="xpu")
+    BATCH_INVARIANT="${BATCH_INVARIANT:-0}"
+    unset CUDA_VISIBLE_DEVICES || true
+    if [ -f /opt/intel/oneapi/setvars.sh ]; then
+        # shellcheck disable=SC1091
+        source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1 || true
+    fi
+else
+    BATCH_INVARIANT="${BATCH_INVARIANT:-1}"
+fi
 
 # Bench parameters
 NUM_PROMPTS="${NUM_PROMPTS:-50}"
@@ -67,7 +85,8 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 # Launch LMCache with L1 config
-CUDA_VISIBLE_DEVICES="${GPU_DEVICE}" \
+env "${DEVICE_AFFINITY_VAR}=${GPU_DEVICE}" \
+    "${VLLM_DEVICE_ENV[@]}" \
 lmcache server \
     --l1-size-gb "$CPU_BUFFER_SIZE" \
     --eviction-policy LRU \
@@ -81,21 +100,25 @@ sleep 10
 
 # Launch vLLM with LMCache
 GPU_MEMORY_UTIL_ARG=""
-GPU_MEMORY_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i "${GPU_DEVICE}" | tr -d ' ')
-GPU_MEMORY_GB=$((GPU_MEMORY_MB / 1024))
-if [ "$GPU_MEMORY_GB" -gt 90 ]; then
-    GPU_MEMORY_UTIL_ARG="--gpu-memory-utilization 0.5"
+if [ "${TORCH_DEVICE_TYPE}" != "xpu" ]; then
+    GPU_MEMORY_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i "${GPU_DEVICE}" | tr -d ' ')
+    GPU_MEMORY_GB=$((GPU_MEMORY_MB / 1024))
+    if [ "$GPU_MEMORY_GB" -gt 90 ]; then
+        GPU_MEMORY_UTIL_ARG="--gpu-memory-utilization 0.5"
+    fi
 fi
 
+
 env -u VLLM_PORT \
-    CUDA_VISIBLE_DEVICES="${GPU_DEVICE}" \
+    "${DEVICE_AFFINITY_VAR}=${GPU_DEVICE}" \
+    "${VLLM_DEVICE_ENV[@]}" \
     VLLM_ENABLE_V1_MULTIPROCESSING=0 \
     VLLM_SERVER_DEV_MODE=1 \
-    VLLM_BATCH_INVARIANT=1 \
+    VLLM_BATCH_INVARIANT=${BATCH_INVARIANT} \
     PYTHONHASHSEED=0 \
 vllm serve "$MODEL" \
     --kv-transfer-config "{\"kv_connector\":\"LMCacheMPConnector\", \"kv_role\":\"kv_both\", \"kv_load_failure_policy\": \"recompute\", \"kv_connector_extra_config\": {\"lmcache.mp.port\": $LMCACHE_PORT, \"lmcache.mp.mq_timeout\": 10}}" \
-    --attention-backend FLASH_ATTN \
+    --attention-backend $ATTENTION_BACKEND \
     --port "$VLLM_PORT" \
     --no-async-scheduling \
     $GPU_MEMORY_UTIL_ARG \
