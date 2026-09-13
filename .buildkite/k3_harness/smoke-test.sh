@@ -2,7 +2,9 @@
 # Verify K3s + GPU Operator works: schedule a pod that runs nvidia-smi.
 set -euo pipefail
 
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/common.sh"
 
 echo "=== Smoke Test ==="
 
